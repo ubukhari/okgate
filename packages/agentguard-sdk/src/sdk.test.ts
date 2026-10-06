@@ -81,7 +81,7 @@ describe("createGuard + wrap", () => {
     const first = (await del({ id: "c_1" })) as { code: string; details: { approvalId: string } };
     expect(first.code).toBe("APPROVAL_REQUIRED");
     expect((await ag.pendingApprovals()).map((a) => a.id)).toEqual([first.details.approvalId]);
-    await ag.approve(first.details.approvalId, "umer");
+    await ag.approve(first.details.approvalId, "oncall");
     expect(await del({ id: "c_1" })).toEqual({ deleted: "c_1" });
   });
 

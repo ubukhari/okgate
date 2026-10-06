@@ -172,14 +172,14 @@ describe("Guard", () => {
     expect(events.filter((e) => e.type === "APPROVAL_REQUIRED")).toHaveLength(1);
     const different = await guard.run({ tool: crmDelete, args: { id: "c_10" }, runId: "r" }, exec);
     expect((different.error?.details as { approvalId: string }).approvalId).not.toBe(id);
-    await guard.decide(id, "approved", "umer");
+    await guard.decide(id, "approved", "oncall");
     const ok = await guard.run({ tool: crmDelete, args: { id: "c_9" }, runId: "r" }, exec);
     expect(ok.ok).toBe(true);
     expect(executed).toBe(1);
     const consumed = await guard.run({ tool: crmDelete, args: { id: "c_9" }, runId: "r" }, exec);
     expect(consumed.error?.code).toBe("APPROVAL_REQUIRED");
     const denyId = (consumed.error?.details as { approvalId: string }).approvalId;
-    await guard.decide(denyId, "denied", "umer", "not today");
+    await guard.decide(denyId, "denied", "oncall", "not today");
     const denied = await guard.run({ tool: crmDelete, args: { id: "c_9" }, runId: "r" }, exec);
     expect(denied.error).toMatchObject({ code: "APPROVAL_DENIED", retryable: false });
     expect(executed).toBe(1);
