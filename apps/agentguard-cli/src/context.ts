@@ -13,8 +13,7 @@ import {
   type LoadedPolicy,
 } from "@agentwares/agentguard-core/node";
 import { existsSync as exists, readFileSync } from "node:fs";
-import type { HttpRegistration } from "./proxy/http.js";
-import { registrationPath } from "./proxy/http.js";
+import { registrationPath, type HttpRegistration } from "./registration.js";
 import { createAlerter } from "./notify.js";
 import { flagString, type ParsedArgs } from "./args.js";
 
@@ -29,6 +28,31 @@ export interface Io {
   env: NodeJS.ProcessEnv;
   /** false when stdout is a pipe — an MCP client spawned us and wants a server, not the help text */
   tty?: boolean;
+  /** everything on stdin (hook mode reads the harness's JSON from it) */
+  stdin?: () => Promise<string>;
+}
+
+/** Read stdin to the end, at most `maxBytes`, giving up after `timeoutMs`. Empty on a terminal. */
+export function readStdin(maxBytes = 16 * 1024 * 1024, timeoutMs = 10_000): Promise<string> {
+  if (process.stdin.isTTY) return Promise.resolve("");
+  return new Promise((resolveText) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    const done = (): void => {
+      clearTimeout(timer);
+      process.stdin.removeAllListeners("data");
+      process.stdin.removeAllListeners("end");
+      process.stdin.pause();
+      resolveText(Buffer.concat(chunks).toString("utf8"));
+    };
+    const timer = setTimeout(done, timeoutMs);
+    process.stdin.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size <= maxBytes) chunks.push(chunk);
+    });
+    process.stdin.on("end", done);
+    process.stdin.on("error", done);
+  });
 }
 
 /**
@@ -47,6 +71,7 @@ export function defaultIo(): Io {
     cwd: process.cwd(),
     env: process.env,
     tty: process.stdout.isTTY === true,
+    stdin: () => readStdin(),
   };
 }
 

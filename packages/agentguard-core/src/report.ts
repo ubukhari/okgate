@@ -54,6 +54,35 @@ export interface Report {
   topTools: { tool: string; calls: number; class: string }[];
   mutations: AuditEntry[];
   upstreams: string[];
+  /** hook mode: the coding agent's own shell commands, file edits and tool calls */
+  hooks: HookSummary;
+}
+
+export interface HookSummary {
+  calls: number;
+  shell: number;
+  edits: number;
+  tools: number;
+  clients: string[];
+  /** irreversible calls (push, merge, publish, send, rm outside the workspace, …) */
+  irreversible: number;
+  /** irreversible calls that ran because a person's turn authorized them */
+  onHumanTurn: number;
+  /** calls that ran once after `agentguard approve` */
+  approved: number;
+  /** enforce: irreversible calls held for approval */
+  irreversibleHeld: number;
+  /** enforce: every call refused or held */
+  refused: number;
+  /** dry-run: what enforce mode would have refused; these ran */
+  wouldHave: {
+    seq: number;
+    ts: string;
+    tool: string;
+    summary: string;
+    code: string;
+    cause: string;
+  }[];
 }
 
 export function listRuns(entries: readonly AuditEntry[]): RunSummary[] {
@@ -157,7 +186,9 @@ export function buildReport(all: readonly AuditEntry[], opts: { runId?: string }
     .map(([tool, v]) => ({ tool, ...v }))
     .sort((a, b) => b.calls - a.calls)
     .slice(0, 10);
+  const hooks = summarizeHooks(entries);
   return {
+    hooks,
     runId,
     runs: listRuns(entries),
     entries: entries.length,
@@ -173,6 +204,84 @@ export function buildReport(all: readonly AuditEntry[], opts: { runId?: string }
   };
 }
 
+export function summarizeHooks(entries: readonly AuditEntry[]): HookSummary {
+  const out: HookSummary = {
+    calls: 0,
+    shell: 0,
+    edits: 0,
+    tools: 0,
+    clients: [],
+    irreversible: 0,
+    onHumanTurn: 0,
+    approved: 0,
+    irreversibleHeld: 0,
+    refused: 0,
+    wouldHave: [],
+  };
+  const clients = new Set<string>();
+  for (const e of entries) {
+    const h = e.hook;
+    if (!h) continue;
+    out.calls += 1;
+    clients.add(h.client);
+    if (e.counters?.shell_commands) out.shell += 1;
+    else if (e.counters?.file_edits) out.edits += 1;
+    else out.tools += 1;
+    if (h.irreversible?.length) out.irreversible += 1;
+    if (h.decision === "allow" && h.irreversible?.length && h.human_turn?.ok) out.onHumanTurn += 1;
+    if (h.decision === "allow" && h.approval_id) out.approved += 1;
+    if (h.decision === "deny") out.refused += 1;
+    if (h.decision === "deny" && h.irreversible?.length) out.irreversibleHeld += 1;
+    if (h.would)
+      out.wouldHave.push({
+        seq: e.seq,
+        ts: e.ts,
+        tool: e.tool,
+        summary: h.summary,
+        code: h.would.code,
+        cause: h.would.cause,
+      });
+  }
+  out.clients = [...clients];
+  return out;
+}
+
+function renderHooks(h: HookSummary, lines: string[]): void {
+  if (h.calls === 0) return;
+  lines.push(`## Coding-agent hooks (${h.clients.join(", ")})`);
+  lines.push("");
+  const kinds = [
+    h.shell ? `${h.shell} shell command${plural(h.shell)}` : "",
+    h.edits ? `${h.edits} file edit${plural(h.edits)}` : "",
+    h.tools ? `${h.tools} tool call${plural(h.tools)}` : "",
+  ].filter(Boolean);
+  let line = `${h.calls} call${plural(h.calls)} checked: ${kinds.join(", ")}.`;
+  if (h.irreversible > 0) {
+    const parts = [`${h.onHumanTurn} ran on a person's turn`];
+    if (h.approved) parts.push(`${h.approved} after \`agentguard approve\``);
+    if (h.irreversibleHeld) parts.push(`${h.irreversibleHeld} held for approval`);
+    const ranOther = h.irreversible - h.onHumanTurn - h.approved - h.irreversibleHeld;
+    if (ranOther > 0) parts.push(`${ranOther} ran in dry-run without one`);
+    line += ` ${h.irreversible} irreversible: ${parts.join(", ")}.`;
+  }
+  if (h.refused) line += ` ${h.refused} refused or held in all.`;
+  lines.push(line);
+  lines.push("");
+  if (h.wouldHave.length > 0) {
+    lines.push(`### What enforce mode would have stopped (hooks.mode: dry-run — these ran)`);
+    lines.push("");
+    lines.push("| # | when | code | command | why |");
+    lines.push("|---|------|------|---------|-----|");
+    for (const w of h.wouldHave.slice(0, 50))
+      lines.push(
+        `| ${w.seq} | ${w.ts} | \`${w.code}\` | \`${escapeCell(w.summary).replace(/`/g, "'")}\` | ${escapeCell(w.cause)} |`,
+      );
+    lines.push("");
+    lines.push("Set `hooks.mode: enforce` in agentguard.yaml when this list looks right.");
+    lines.push("");
+  }
+}
+
 export function renderReportMarkdown(report: Report): string {
   const lines: string[] = [];
   const scope = report.runId
@@ -181,7 +290,9 @@ export function renderReportMarkdown(report: Report): string {
   lines.push(`# agentguard report — ${scope}`);
   lines.push("");
   if (report.entries === 0) {
-    lines.push("No tool calls recorded. Point your agent at the proxy and run it once.");
+    lines.push(
+      "No tool calls recorded. Point your agent at the proxy (or run `agentguard hooks install` for a coding agent) and run it once.",
+    );
     return lines.join("\n");
   }
   const first = report.runs[report.runs.length - 1]!;
@@ -222,6 +333,7 @@ export function renderReportMarkdown(report: Report): string {
     lines.push(parts.join(", ") + ".");
     lines.push("");
   }
+  renderHooks(report.hooks, lines);
   if (report.unpriced.length > 0) {
     lines.push("## Spend the caps could not measure");
     lines.push("");

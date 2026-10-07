@@ -75,7 +75,7 @@ describe.skipIf(!existsSync(here(root)))("repo-root files (distribution/root)", 
 
   it("every skill and Gemini command says what it runs: the published package", () => {
     const skills = readdirSync(here(`${root}/plugins/agentguard/skills`));
-    expect(skills.sort()).toEqual(["init", "report"]);
+    expect(skills.sort()).toEqual(["audit", "hooks", "init", "report"]);
     for (const skill of skills) {
       const text = read(`${root}/plugins/agentguard/skills/${skill}/SKILL.md`);
       const front = YAML.parse(text.split("---")[1]!) as Record<string, unknown>;
@@ -83,13 +83,19 @@ describe.skipIf(!existsSync(here(root)))("repo-root files (distribution/root)", 
       expect(String(front.description).length).toBeGreaterThan(80);
       expect(text).toContain(`npx -y ${pkg.name}@latest ${skill}`);
     }
-    // init rewrites a config: only the user starts it
-    const init = YAML.parse(
-      read(`${root}/plugins/agentguard/skills/init/SKILL.md`).split("---")[1]!,
-    ) as Record<string, unknown>;
-    expect(init["disable-model-invocation"]).toBe(true);
+    // init and hooks rewrite configs: only the user starts them
+    for (const skill of ["init", "hooks"]) {
+      const front = YAML.parse(
+        read(`${root}/plugins/agentguard/skills/${skill}/SKILL.md`).split("---")[1]!,
+      ) as Record<string, unknown>;
+      expect(front["disable-model-invocation"]).toBe(true);
+    }
+    // the audit reads counts only: it never runs --enforce on its own
+    const audit = read(`${root}/plugins/agentguard/skills/audit/SKILL.md`);
+    expect(audit).toContain(`npx -y ${pkg.name}@latest audit --json`);
+    expect(audit).toContain("Do not run `--enforce` unless the user asks");
 
-    for (const command of ["init", "report"]) {
+    for (const command of ["audit", "hooks", "init", "report"]) {
       const toml = read(`${root}/commands/agentguard/${command}.toml`);
       expect(toml).toMatch(/^description = ".+"$/m);
       expect(toml).toMatch(/^prompt = """\n[\s\S]+\n"""\n$/m);

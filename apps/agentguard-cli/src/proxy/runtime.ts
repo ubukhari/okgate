@@ -45,6 +45,9 @@ import {
   type Upstream,
 } from "@agentwares/agentguard-core";
 import type { LoadedPolicy } from "@agentwares/agentguard-core/node";
+// The root export, not `@agentwares/mcp-kit/paging`: tsup bundles mcp-kit into the published CLI
+// by an exact-name match, and a subpath would be left as an undeclared runtime dependency.
+import { readAllPages } from "@agentwares/mcp-kit";
 
 export interface ExposedTool {
   /** the name the agent sees */
@@ -291,6 +294,13 @@ export class ProxyRuntime {
     }
   }
 
+  /**
+   * Re-read an upstream's tools, every page (mcp-kit's `readAllPages`): at most 20 requests, each
+   * under the upstream's `timeout_ms`, ending at a cursor already followed. It used to follow
+   * `nextCursor` with no bound, so an upstream that echoed its cursor kept the proxy asking for
+   * the same page forever. A refresh that fails, or stops at the 20-page / 2,000-tool ceiling,
+   * changes nothing: the agent keeps the last good list, and the log says why.
+   */
   private async refreshTools(name: string): Promise<void> {
     const conn = this.connections.get(name);
     if (!conn?.connected) return;
@@ -298,22 +308,24 @@ export class ProxyRuntime {
       conn.tools = [];
       return;
     }
+    const kept = () =>
+      `keeping the last good list (${conn.tools.length} tool${conn.tools.length === 1 ? "" : "s"})`;
     try {
-      const tools: Tool[] = [];
-      let cursor: string | undefined;
-      do {
+      const read = await readAllPages<Tool>(async (cursor) => {
         const page = await conn.client.listTools(cursor ? { cursor } : undefined, {
           timeout: conn.upstream.timeout_ms,
         });
-        tools.push(...page.tools);
-        cursor = page.nextCursor;
-      } while (cursor);
-      conn.tools = tools;
+        return { items: page.tools, nextCursor: page.nextCursor };
+      });
+      if (read.truncated) {
+        this.log(`tools/list for "${name}" not applied: ${read.truncated.reason}; ${kept()}`);
+        return;
+      }
+      conn.tools = read.items;
     } catch (err) {
       this.log(
-        `tools/list failed for "${name}": ${err instanceof Error ? err.message : String(err)}`,
+        `tools/list failed for "${name}": ${err instanceof Error ? err.message : String(err)}; ${kept()}`,
       );
-      conn.tools = [];
     }
   }
 

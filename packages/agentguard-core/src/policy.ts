@@ -78,6 +78,95 @@ const ModelPriceSchema = z.object({
 });
 export type ModelPrice = z.infer<typeof ModelPriceSchema>;
 
+/**
+ * Built-in irreversible classes for hook mode. Each runs only on a genuine human turn (see
+ * `hooks.irreversible`), or once after `agentguard approve`.
+ */
+export const BUILTIN_IRREVERSIBLE = [
+  "git-push",
+  "merge",
+  "tag-delete",
+  "rm-outside-workspace",
+  "publish",
+  "send",
+  "guard-config",
+] as const;
+export type BuiltinIrreversible = (typeof BUILTIN_IRREVERSIBLE)[number];
+
+const IrreversibleRuleSchema = z.object({
+  name: z
+    .string()
+    .regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/, "letters, digits, _ and - only")
+    .max(64),
+  /** shell-command globs, matched against each simple command and the whole line */
+  shell: patterns,
+  /** file globs: edits and shell writes to these paths */
+  paths: patterns,
+  /** tool-name globs (MCP tools reached through the coding agent, e.g. `mcp__*__deploy*`) */
+  tools: patterns,
+  /** words a human turn names this action with (default: the rule's name) */
+  mentions: z.array(z.string().min(1)).default([]),
+});
+export type IrreversibleRule = z.infer<typeof IrreversibleRuleSchema>;
+
+/** A fresh object each time, so no two parsed policies share (and mutate) the same arrays. */
+const hookIrreversibleDefaults = (): {
+  builtins: boolean | BuiltinIrreversible[];
+  rules: IrreversibleRule[];
+  window_s: number;
+  require_mention: boolean;
+  require_origin: boolean;
+  mentions: Record<string, string[]>;
+} => ({
+  builtins: true,
+  rules: [],
+  window_s: 1800,
+  require_mention: true,
+  require_origin: false,
+  mentions: {},
+});
+
+const HooksSchema = z.object({
+  /** hook decisions are logged and nothing is blocked until this is `enforce` */
+  mode: z.enum(["dry-run", "enforce"]).default("dry-run"),
+  shell: z.object({ deny: patterns, approval: patterns }).default({ deny: [], approval: [] }),
+  paths: z.object({ deny: patterns, approval: patterns }).default({ deny: [], approval: [] }),
+  irreversible: z
+    .object({
+      /** `true` (all), `false` (none) or a list of BUILTIN_IRREVERSIBLE names */
+      builtins: z.union([z.boolean(), z.array(z.enum(BUILTIN_IRREVERSIBLE))]).default(true),
+      rules: z.array(IrreversibleRuleSchema).default([]),
+      /** the authorizing human turn must be at most this old */
+      window_s: z.number().positive().default(1800),
+      /** the human turn must name the action (or answer yes to a question that does) */
+      require_mention: z.boolean().default(true),
+      /** count only transcript entries labelled as typed by a person (`origin.kind: human`) */
+      require_origin: z.boolean().default(false),
+      /** extra words per rule, added to the defaults: `{ git-push: [deploy] }` */
+      mentions: z.record(z.string(), z.array(z.string().min(1))).default({}),
+    })
+    // spelled out: an object-level default does not run the field defaults
+    .default(hookIrreversibleDefaults),
+});
+export type HooksPolicy = z.infer<typeof HooksSchema>;
+
+/**
+ * `audit.rules`: rules for `agentguard audit` stated explicitly, beside the ones it reads from
+ * CLAUDE.md / AGENTS.md / GEMINI.md / .cursor/rules. `check` is one check (or a list) in the
+ * grammar of `parseCheck`: `no-push main`, `run "pnpm check" before push`, `never "rm -rf /*"`.
+ */
+const AuditRuleSchema = z.object({
+  id: z
+    .string()
+    .regex(/^[A-Za-z0-9][A-Za-z0-9_.-]*$/, "letters, digits, _ . and - only")
+    .max(64)
+    .optional(),
+  text: z.string().min(1).max(400).optional(),
+  check: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]),
+});
+export const AuditRulesSchema = z.array(AuditRuleSchema).default([]);
+export type AuditRuleInput = z.infer<typeof AuditRuleSchema>;
+
 const AgentSchema = z.object({
   name: z.string().min(1).max(64),
   /** `sha256:<hex>` of the scoped key handed to the agent; omit for stdio-only agents */
@@ -172,12 +261,15 @@ export const PolicySchema = z.object({
       include_results: z.boolean().default(false),
       /** truncate recorded args/results to this many characters */
       max_chars: z.number().int().positive().default(4000),
+      /** rules for `agentguard audit`, beside those in the repo's rule files */
+      rules: AuditRulesSchema,
     })
     .default({
       path: ".agentguard/audit.jsonl",
       redact: true,
       include_results: false,
       max_chars: 4000,
+      rules: [],
     }),
   alerts: z
     .object({
@@ -192,6 +284,13 @@ export const PolicySchema = z.object({
     })
     .default({ on: ["LOOP_DETECTED", "CAP_EXCEEDED", "KILLED", "APPROVAL_REQUIRED"] }),
   state: z.object({ dir: z.string().default(".agentguard") }).default({ dir: ".agentguard" }),
+  /** hook mode: the coding agent's own shell commands and file edits (Claude Code, Codex, Gemini CLI) */
+  hooks: HooksSchema.default(() => ({
+    mode: "dry-run" as const,
+    shell: { deny: [], approval: [] },
+    paths: { deny: [], approval: [] },
+    irreversible: hookIrreversibleDefaults(),
+  })),
 });
 
 export type Policy = z.infer<typeof PolicySchema>;

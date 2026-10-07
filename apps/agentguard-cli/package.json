@@ -1,7 +1,7 @@
 {
   "name": "@agentwares/agentguard",
-  "version": "0.1.6",
-  "description": "MCP policy proxy for AI agents: hard spend limits, destructive-action gating with approvals, a kill switch, scoped credentials, dry-run writes with mutation diffs, loop breaker, blast-radius caps and a hash-chained audit log. No LLM calls, no phone-home, no account.",
+  "version": "0.1.9",
+  "description": "MCP policy proxy for AI agents: hard spend limits, destructive-action gating with approvals, a kill switch, scoped credentials, dry-run writes with mutation diffs, loop breaker, blast-radius caps and a hash-chained audit log. Hook mode applies the same policy to Claude Code, Codex and Gemini CLI shell commands and file edits, and runs irreversible commands only on a turn a person typed. Audit mode reports which CLAUDE.md / AGENTS.md rules your coding agents broke, from your own sessions, locally. No LLM calls, no phone-home, no account.",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -43,6 +43,12 @@
     "dry-run",
     "audit-log",
     "claude-code",
+    "claude-code-hooks",
+    "claude-md",
+    "agents-md",
+    "codex",
+    "gemini-cli",
+    "coding-agents",
     "cursor",
     "guardrails",
     "mcp-server",
@@ -68,8 +74,8 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@agentwares/mcp-kit": "^0.2.0",
-    "@agentwares/notify": "^0.1.1",
+    "@agentwares/mcp-kit": "^0.3.0",
+    "@agentwares/notify": "^0.1.2",
     "tsx": "^4.23.13"
   },
   "bugs": {

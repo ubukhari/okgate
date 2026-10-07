@@ -19,6 +19,7 @@ import {
   type AuditEntryInput,
   type AuditOutcome,
   type AuditSink,
+  type HookAuditInfo,
 } from "./audit.js";
 import {
   isExpired,
@@ -48,6 +49,34 @@ import {
 } from "./policy.js";
 import { estimateSpendFromArgs, extractSpendFromResult } from "./spend.js";
 import { MemoryStateStore, type StateStore } from "./state.js";
+import { loopKey } from "./loop.js";
+import { describeIrreversible, type HookAction, type HookAssessment } from "./hook.js";
+import { evaluateHumanTurn, type GateVerdict, type HumanTurn } from "./transcript.js";
+
+/** One coding-agent call, normalized and assessed, ready for `Guard.preflight`. */
+export interface PreflightCall {
+  action: HookAction;
+  assessment: HookAssessment;
+  runId: string;
+  /** read the human-turn evidence; called only when the call is irreversible */
+  humanTurn?: () =>
+    Promise<{ turn?: HumanTurn; missing?: string }> | { turn?: HumanTurn; missing?: string };
+  /** how the person approves, for the agent's message: `npx @agentwares/agentguard approve <id>` */
+  approveCommand?: (id: string) => string;
+}
+
+export interface PreflightResult {
+  decision: "allow" | "deny";
+  mode: Mode;
+  /** enforce: why the call was refused */
+  error?: GuardErrorBody;
+  /** dry-run: what enforce mode would have returned */
+  would?: GuardErrorBody;
+  entry: AuditEntry;
+  /** the human-turn gate per irreversible class */
+  gate: { rule: string; verdict: GateVerdict }[];
+  approvalId?: string;
+}
 
 export interface GuardEvent {
   type:
@@ -555,13 +584,227 @@ export class Guard {
       : { ok: !error, value, error, outcome, faked: false, entry, decision };
   }
 
+  /**
+   * Hook mode: decide one coding-agent call before the harness runs it. Kill switch → rule
+   * denial → approval (a rule's, or an irreversible call without a human turn) → loop breaker →
+   * caps, then charge and audit. Nothing executes here; the harness does that on "allow".
+   * `hooks.mode: dry-run` (the default) allows everything except a kill switch and records what
+   * enforce mode would have refused.
+   */
+  async preflight(call: PreflightCall): Promise<PreflightResult> {
+    const startedAt = this.now();
+    const policy = this.policy;
+    const mode: Mode = policy.hooks.mode;
+    const { action, assessment: a, runId } = call;
+    const argsHash = await sha256Hex(normalizeArgs(action.identity, { collapseVolatile: false }));
+    const logArgs = truncate(
+      policy.audit.redact ? redactSecrets(action.logArgs) : action.logArgs,
+      policy.audit.max_chars,
+    );
+    const gate: PreflightResult["gate"] = [];
+    const hook: HookAuditInfo = {
+      client: action.client,
+      summary: a.summary,
+      decision: "allow",
+      irreversible: a.irreversible.length ? a.irreversible.map((m) => m.rule) : undefined,
+    };
+    let would: GuardErrorBody | undefined;
+    let approvalId: string | undefined;
+    const base = (): AuditEntryInput => ({
+      ts: startedAt.toISOString(),
+      run_id: runId,
+      session_id: action.sessionId,
+      upstream: action.client,
+      tool: action.tool,
+      class: a.class,
+      verb: a.verb,
+      mode,
+      outcome: "ok",
+      args_hash: argsHash,
+      args: logArgs,
+      reason: a.summary,
+      counters: a.delta,
+      hook,
+    });
+    const refuse = async (
+      outcome: AuditOutcome,
+      error: GuardErrorBody,
+      eventType?: GuardEvent["type"],
+      approval?: ApprovalRecord,
+    ): Promise<PreflightResult> => {
+      hook.decision = "deny";
+      const entry = await this.audit.append({
+        ...base(),
+        outcome,
+        error,
+        reason: error.cause,
+        latency_ms: this.now().getTime() - startedAt.getTime(),
+      });
+      if (eventType)
+        await this.emit({
+          type: eventType,
+          runId,
+          tool: action.tool,
+          entry,
+          error,
+          approval,
+          at: entry.ts,
+        });
+      return { decision: "deny", mode, error, entry, gate, approvalId };
+    };
+    /** enforce: refuse; dry-run: remember the first thing enforce would have refused */
+    const enforceOr = async (
+      outcome: AuditOutcome,
+      error: GuardErrorBody,
+      eventType?: GuardEvent["type"],
+      approval?: ApprovalRecord,
+    ): Promise<PreflightResult | undefined> => {
+      if (mode === "enforce") return refuse(outcome, error, eventType, approval);
+      would ??= error;
+      return undefined;
+    };
+
+    // 1. kill switch: applies in both modes
+    const killed = await this.kill.check();
+    if (killed.killed)
+      return refuse(
+        "halted",
+        {
+          code: "KILLED",
+          cause: `agentguard kill switch is on (${killed.source ?? "unknown"}: ${killed.reason ?? "no reason given"})`,
+          fix: "stop; a human must run `agentguard resume` before any guarded command runs",
+          retryable: false,
+          details: { source: killed.source, reason: killed.reason, at: killed.at },
+        },
+        "KILLED",
+      );
+
+    // 2. rules that refuse whatever the human turn
+    if (a.denied) {
+      const r = await enforceOr("blocked", a.denied, "TOOL_DENIED");
+      if (r) return r;
+    }
+
+    // 3. the human-turn gate for irreversible calls
+    let gateOk = true;
+    if (a.irreversible.length > 0) {
+      const last = (await this.state.get(`hookirr:${runId}`)) as string | undefined;
+      const evidence = (await call.humanTurn?.()) ?? { missing: "no transcript reader" };
+      for (const m of a.irreversible) {
+        const verdict = evaluateHumanTurn({
+          turn: evidence.turn,
+          missing: evidence.missing,
+          now: startedAt,
+          lastIrreversibleAt: last,
+          windowS: policy.hooks.irreversible.window_s,
+          requireMention: policy.hooks.irreversible.require_mention,
+          mentions: m.mentions,
+        });
+        gate.push({ rule: m.rule, verdict });
+        if (!verdict.ok) gateOk = false;
+      }
+      const failed = gate.find((g) => !g.verdict.ok) ?? gate[0]!;
+      hook.human_turn = { ok: gateOk, reason: failed.verdict.reason, at: evidence.turn?.at };
+    }
+
+    // 4. approval: a rule asks for one, or an irreversible call has no human turn behind it
+    const needsApproval = Boolean(a.approval) || !gateOk;
+    if (needsApproval) {
+      const why = !gateOk
+        ? `"${a.summary}" is irreversible (${describeIrreversible(a.irreversible.filter((m) => gate.some((g) => g.rule === m.rule && !g.verdict.ok))).slice(0, 300)}) and ${hook.human_turn!.reason}`
+        : `"${a.summary}" ${a.approval!.reason}`;
+      if (mode === "enforce") {
+        const outcome = await this.checkApproval(
+          { tool: { name: action.tool }, args: action.identity, runId, upstream: action.client },
+          action.tool,
+          argsHash,
+          logArgs,
+        );
+        if (outcome.kind === "denied") return refuse("blocked", outcome.error);
+        if (outcome.kind === "pending") {
+          approvalId = outcome.record.id;
+          hook.approval_id = approvalId;
+          const command = call.approveCommand?.(approvalId) ?? `agentguard approve ${approvalId}`;
+          return refuse(
+            "pending",
+            {
+              ...outcome.error,
+              cause: `${why}. It needs a person's approval (approval ${approvalId}).`,
+              fix: `stop and tell the user: this needs their approval. They can run \`${command}\` in a terminal in this project${action.client === "claude-code" ? ` (or type \`! ${command}\` in Claude Code)` : ""}${!gateOk ? ", or say in their own words that you should do it" : ""}; then retry this exact command once. Do not change it, work around it, or run the approval yourself: agentguard refuses an approval from the agent.`,
+            },
+            outcome.fresh ? "APPROVAL_REQUIRED" : undefined,
+            outcome.record,
+          );
+        }
+        // granted: the approved record for this exact call is now consumed
+        hook.approval_id = outcome.id;
+      } else {
+        would ??= {
+          code: "APPROVAL_REQUIRED",
+          cause: `${why}. In enforce mode it would wait for a person's approval.`,
+          fix: "nothing was blocked (hooks.mode: dry-run)",
+          retryable: true,
+        };
+      }
+    }
+
+    // 5. loop breaker: identical file edits
+    if (a.loop) {
+      const key = loopKey(action.tool, action.identity, policy.loop.ignore_args);
+      const window = await this.state.update<string[]>(`hookloop:${runId}`, (cur) =>
+        [...(cur ?? []), key].slice(-policy.loop.window),
+      );
+      const verdict = detectLoop(window, policy.loop);
+      if (verdict.looping) {
+        const r = await enforceOr(
+          "halted",
+          {
+            code: "LOOP_DETECTED",
+            cause:
+              verdict.kind === "repeat"
+                ? `"${a.summary}" was attempted ${verdict.repeats} times in the last ${policy.loop.window} guarded calls`
+                : `the same ${verdict.cycleLength} calls repeated ${verdict.repeats} times in the last ${policy.loop.window} guarded calls`,
+            fix: "you are looping: do not retry; change approach, ask the user, or stop",
+            retryable: false,
+            details: {
+              kind: verdict.kind,
+              repeats: verdict.repeats,
+              cycleLength: verdict.cycleLength,
+            },
+          },
+          "LOOP_DETECTED",
+        );
+        if (r) return r;
+      }
+    }
+
+    // 6. caps
+    const check = await this.caps.check(runId, effectiveCaps(policy), a.delta);
+    if (!check.ok) {
+      const r = await enforceOr("blocked", capError(check, runId), "CAP_EXCEEDED");
+      if (r) return r;
+    }
+
+    // 7. allow
+    await this.caps.charge(runId, a.delta);
+    if (a.irreversible.length > 0)
+      await this.state.set(`hookirr:${runId}`, startedAt.toISOString());
+    if (would) hook.would = { code: would.code, cause: would.cause };
+    const entry = await this.audit.append({
+      ...base(),
+      reason: hook.human_turn?.reason ?? a.summary,
+      latency_ms: this.now().getTime() - startedAt.getTime(),
+    });
+    return { decision: "allow", mode, would, entry, gate, approvalId: hook.approval_id };
+  }
+
   private async checkApproval(
     call: GuardCall,
     name: string,
     argsHash: string,
     redactedArgs: unknown,
   ): Promise<
-    | { kind: "granted" }
+    | { kind: "granted"; id: string }
     | { kind: "denied"; error: GuardErrorBody }
     | { kind: "pending"; error: GuardErrorBody; fresh: boolean; record: ApprovalRecord }
   > {
@@ -574,7 +817,7 @@ export class Guard {
     }
     if (record?.status === "approved") {
       await this.approvals.update(record.id, { status: "consumed" });
-      return { kind: "granted" };
+      return { kind: "granted", id: record.id };
     }
     if (record?.status === "denied") {
       return {
@@ -612,7 +855,7 @@ export class Guard {
         if (!latest || latest.status === "pending") continue;
         if (latest.status === "approved") {
           await this.approvals.update(latest.id, { status: "consumed" });
-          return { kind: "granted" };
+          return { kind: "granted", id: latest.id };
         }
         if (latest.status === "denied") {
           return {

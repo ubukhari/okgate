@@ -32,6 +32,14 @@ const VALUE_FLAGS = new Set([
   "timeout",
   "out",
   "upstream",
+  "command",
+  "fallback-config",
+  "since",
+  "repo",
+  "cache-dir",
+  "claude-dir",
+  "codex-dir",
+  "rules",
 ]);
 
 export function parseArgs(argv: readonly string[]): ParsedArgs {

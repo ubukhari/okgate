@@ -11,12 +11,22 @@ export { version };
 import { defaultIo, describeError, type Io } from "./context.js";
 import { connectCommand } from "./commands/connect.js";
 import { approvalsCommand, decideCommand, killCommand, resumeCommand } from "./commands/control.js";
-import { initCommand } from "./commands/init.js";
+import { hookCommand } from "./commands/hook.js";
+import { hooksCommand } from "./commands/hooks.js";
 import { keyCommand } from "./commands/keys.js";
 import { permissionDiffCommand } from "./commands/permission-diff.js";
-import { proxyCommand } from "./commands/proxy.js";
 import { diffCommand, reportCommand, statusCommand, verifyCommand } from "./commands/report.js";
-import { toolsCommand } from "./commands/tools.js";
+
+// The MCP SDK costs ~110 ms to load. `agentguard hook pre-tool-use` runs before every guarded
+// tool call of a coding agent and never needs it, so the commands that do load it on demand.
+const proxyCommand = async (args: ParsedArgs, io: Io): Promise<number> =>
+  (await import("./commands/proxy.js")).proxyCommand(args, io);
+const initCommand = async (args: ParsedArgs, io: Io): Promise<number> =>
+  (await import("./commands/init.js")).initCommand(args, io);
+const toolsCommand = async (args: ParsedArgs, io: Io): Promise<number> =>
+  (await import("./commands/tools.js")).toolsCommand(args, io);
+const auditCommand = async (args: ParsedArgs, io: Io): Promise<number> =>
+  (await import("./commands/audit.js")).auditCommand(args, io);
 
 export const HELP = `agentguard — MCP policy proxy for agents that touch production
 
@@ -25,6 +35,18 @@ export const HELP = `agentguard — MCP policy proxy for agents that touch produ
   agentguard diff [--run id]          record-by-record mutation diff from a dry run
   agentguard verify [audit.jsonl]     prove the hash-chained audit log was not edited
   agentguard connect <key> [--write]  point this machine at your hosted proxy (paid tiers)
+
+  agentguard hooks install [--project|--user] [--client claude|codex|gemini|all]
+                                      check a coding agent's own shell commands and file edits against agentguard.yaml (dry-run first);
+                                      irreversible commands (push, merge, publish, send, rm outside the repo) only on a turn a person typed
+  agentguard hooks uninstall | status
+  agentguard hook pre-tool-use        what the installed hook runs (reads the harness's JSON on stdin)
+
+  agentguard audit [--since 7d|30d|all] [--client claude|codex|all] [--json]
+                                      which rules in CLAUDE.md / AGENTS.md / GEMINI.md / .cursor/rules your coding agents broke,
+                                      from this machine's Claude Code and Codex sessions in this repo (nothing is sent anywhere)
+  agentguard audit --enforce [--preview]
+                                      write the checkable rules into agentguard.yaml as hook rules, in dry-run, and install the hook
 
   agentguard proxy [--http --port 8788] [--agent name] [--run-id id] [--mode dry-run|enforce]
   agentguard tools [--json]           the tools your agent will see, with class and why
@@ -93,6 +115,12 @@ export async function main(argv: readonly string[], io: Io = defaultIo()): Promi
         return await keyCommand(args, io);
       case "permission-diff":
         return await permissionDiffCommand(args, io);
+      case "hook":
+        return await hookCommand(args, io);
+      case "hooks":
+        return await hooksCommand(args, io);
+      case "audit":
+        return await auditCommand(args, io);
       default:
         io.err(`unknown command "${args.command}"\n`);
         io.err(HELP);

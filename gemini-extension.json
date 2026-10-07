@@ -1,5 +1,5 @@
 {
   "name": "agentguard",
-  "version": "0.1.6",
-  "description": "Put agentguard, an MCP policy proxy, in front of your MCP servers: a dry-run first, then spend caps, approvals for destructive tools, a kill switch and a hash-chained audit log. /agentguard:init sets it up; /agentguard:report explains a run."
+  "version": "0.1.9",
+  "description": "Put agentguard, an MCP policy proxy, in front of your MCP servers: a dry-run first, then spend caps, approvals for destructive tools, a kill switch and a hash-chained audit log. /agentguard:init sets it up; /agentguard:report explains a run; /agentguard:audit shows which GEMINI.md / AGENTS.md rules your agents broke; /agentguard:hooks sets up hook mode."
 }

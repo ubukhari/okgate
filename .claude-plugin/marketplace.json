@@ -9,7 +9,7 @@
     {
       "name": "agentguard",
       "source": "./plugins/agentguard",
-      "description": "Put agentguard in front of this project's MCP servers and read what an agent run did or would have done. /agentguard:init runs `npx @agentwares/agentguard init`; /agentguard:report explains the dry-run report.",
+      "description": "Put agentguard in front of this project's MCP servers and read what an agent run did or would have done. /agentguard:init runs `npx @agentwares/agentguard init`; /agentguard:report explains the dry-run report; /agentguard:audit shows which CLAUDE.md / AGENTS.md rules your coding agents broke; /agentguard:hooks sets up hook mode.",
       "category": "security",
       "tags": [
         "mcp",

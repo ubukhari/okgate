@@ -51,4 +51,11 @@ export {
 } from "./commands/permission-diff.js";
 export { createCrmMcpServer, crmTools, seedState, type CrmState } from "./fixtures/crm-server.js";
 export { runDemoAgent, type DemoOptions, type DemoStep } from "./fixtures/demo-agent.js";
+export {
+  AUDIT_CANARIES,
+  writeSyntheticAuditHistory,
+  type SyntheticAuditHistory,
+  type SyntheticAuditOptions,
+} from "./fixtures/audit-sessions.js";
+export { auditCommand, parseSince, TEAM_HISTORY_URL } from "./commands/audit.js";
 export { main, HELP } from "./cli.js";

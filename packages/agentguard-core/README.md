@@ -21,4 +21,22 @@ const result = await guard.run(
 
 Modules: `policy` (zod schema, `${ENV}` substitution, defaults), `classify`, `loop`, `caps`, `spend` (argument rules, result fields, LLM list prices), `dryrun`, `audit` (`ChainWriter`, `verifyChain`), `kill`, `approvals`, `scope` (agent keys), `report` (`buildReport`, `renderReportMarkdown`, `renderMutationDiff`), `permission-diff` (`agentguard.yaml`, `.claude/settings.json`, `mcp.json`). Stores are interfaces (`StateStore`, `AuditSink`, `KillSwitch`, `ApprovalStore`) with memory implementations here and file implementations in `./node` (`FileStateStore`, `FileAuditSink`, `FileKillSwitch`, `FileApprovalStore`, `loadPolicyFile`, `verifyAuditFile`).
 
-Audit entries: `{ seq, ts, run_id, agent?, upstream?, tool, class, verb, mode, outcome, error?, args_hash, args (redacted), result_hash?, mutation?, usd?, counters?, latency_ms?, reason, prev_hash, hash }` with `hash = sha256(prev_hash + canonical(entry))`.
+Audit entries: `{ seq, ts, run_id, agent?, upstream?, tool, class, verb, mode, outcome, error?, args_hash, args (redacted), result_hash?, mutation?, usd?, counters?, latency_ms?, reason, hook?, prev_hash, hash }` with `hash = sha256(prev_hash + canonical(entry))`.
+
+Hook mode (a coding agent's own shell commands and file edits): `hookActionFromInput` normalizes a
+Claude Code / Codex / Gemini CLI pre-execution hook input, `assessHookAction` applies the policy's
+`hooks:` rules (`parseShell` reads compound command lines; built-in irreversible classes; the
+agent may not approve itself or write the state dir), `scanTranscript` finds the latest
+transcript entry a person typed (`classifyTranscriptEntry` documents the rules),
+`evaluateHumanTurn` is the human-turn gate, and `Guard.preflight` applies kill switch → rule
+denials → approvals → loop breaker → caps → audit without executing anything. `hooks.mode:
+dry-run` allows everything but a kill switch and records what enforce would have refused.
+
+Rule adherence (what `agentguard audit` runs): `extractRules` lists the rules in CLAUDE.md /
+AGENTS.md / GEMINI.md / `.cursor/rules` text and maps the checkable ones to `CheckSpec`s (a
+pattern library, `CHECK_PATTERNS`; or an inline `<!-- agentguard: <check> -->`; or `audit.rules`
+in the policy; grammar in `parseCheck` / `formatCheck`). `ClaudeCodeAuditReader` and
+`CodexAuditReader` turn transcript lines into steps through `hookActionFromInput`;
+`evaluateChecks` applies the checks to one transcript group and returns counts, times, line
+numbers and hashed call ids only (`GroupAudit`, safe to cache); `summarizeAudit` folds groups into
+one result per rule; `planEnforcement` maps checks to `hooks:` rules.

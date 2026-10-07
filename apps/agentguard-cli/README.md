@@ -1,5 +1,7 @@
 # agentguard
 
+[![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/agentwares/agentguard)
+
 **60 seconds to a safe first run.** Your agent already has an MCP config. Put agentguard in front of it, run the agent once in dry-run, and read what it _would_ have done:
 
 ```sh
@@ -37,6 +39,8 @@ agentguard is an MCP policy proxy for agents that touch production. It sits betw
 - **Semantic loop breaker** — the same `(tool, normalized args)` 3× in the last 30 calls, or an A→B→A→B cycle, returns `LOOP_DETECTED`. Timestamps, ids, whitespace and key order are ignored.
 - **Blast-radius caps** — `tool_calls`, `writes`, `deletes`, `emails`, `spend_usd` and custom counters, per run and per day.
 - **Hash-chained audit log** — every call is a JSONL line with `prev_hash` and `hash`; `agentguard verify` proves no entry was edited, removed from the middle, or reordered (see Limits for what a local chain cannot prove on its own).
+- **Hook mode for coding agents** — `agentguard hooks install` puts the same policy in front of Claude Code's, Codex's and Gemini CLI's own shell commands and file edits; irreversible commands (push, merge, publish, send, `rm` outside the repo) run only on a recent turn a person typed that names them, never on text the model wrote. [Details](#hook-mode-a-coding-agents-own-commands).
+- **Rule adherence audit** — `agentguard audit` reads CLAUDE.md, AGENTS.md, GEMINI.md and `.cursor/rules` and this machine's Claude Code and Codex sessions, and prints which rules the agents broke ("broken in 9 of 31 sessions"), locally; `--enforce` turns the checkable ones into hook rules in dry-run. [Details](#audit-which-written-rules-your-coding-agents-broke).
 
 No LLM calls. No phone-home. No account. MIT.
 
@@ -121,6 +125,202 @@ docker run -i --rm agentguard proxy --config /app/demo/agentguard.yaml   # a fak
 
 Prefer HTTP (several agents, scoped keys, Slack approve buttons)? `agentguard proxy --http --port 8788` and point clients at `http://127.0.0.1:8788/mcp` with an `X-Run-Id` header per run and `Authorization: Bearer agk_…` per agent.
 
+## Hook mode: a coding agent's own commands
+
+The proxy sees MCP calls. A coding agent also acts through its own shell and file tools, which no
+MCP proxy sees. Hook mode puts the same `agentguard.yaml` in front of those, through the agent's
+pre-execution hook, and adds one check nothing else makes: an irreversible command runs only on a
+turn a **person** typed.
+
+```sh
+npx -y @agentwares/agentguard hooks install                  # Claude Code, this project (.claude/settings.json)
+npx -y @agentwares/agentguard hooks install --client all     # + Codex (.codex/hooks.json) and Gemini CLI (.gemini/settings.json)
+npx -y @agentwares/agentguard hooks install --user           # every project (~/.claude/settings.json, policy in ~/.agentguard/)
+npx -y @agentwares/agentguard hooks status | uninstall
+```
+
+`install` adds one hook entry (other settings and hooks are kept; the first change leaves a
+`*.agentguard-backup`), adds a commented `hooks:` block in **dry-run** to `agentguard.yaml` (or
+writes a policy with only that block), and adds `.agentguard/` to `.gitignore`. Commit
+`agentguard.yaml` and `.claude/settings.json` and the whole team runs the same rulebook. The hook
+command is `npx -y @agentwares/agentguard@<version> hook pre-tool-use` (about half a second per
+guarded call); with the package installed globally, `--command agentguard` makes it about 0.1 s.
+
+| Agent       | Hook (verified 7 Oct 2026)                                                                                                                           | Rules, approvals, caps, audit                 | Human-turn gate                                                           |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------- |
+| Claude Code | [`PreToolUse`](https://code.claude.com/docs/en/hooks): `Bash`, `Write`, `Edit`, `mcp__*` …                                                           | yes                                           | yes, from the session transcript                                          |
+| Codex CLI   | [`PreToolUse`](https://developers.openai.com/codex/hooks): `Bash`, `apply_patch`, `mcp__*`                                                           | yes (trust the hook once in Codex's `/hooks`) | no: Codex calls its transcript format unstable, so irreversible = approve |
+| Gemini CLI  | [`BeforeTool`](https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md): `run_shell_command`, `write_file`, `replace`, `mcp_*` | yes                                           | no: not verified against a local install, so irreversible = approve       |
+
+Cursor has its own hooks (`beforeShellExecution`) and can load Claude Code's
+([cursor.com/docs/hooks](https://cursor.com/docs/hooks)); hook mode has not been tested there.
+
+**What is checked.** Each shell command is split into simple commands the way a shell would
+(`&&`, `;`, pipes, `$(…)`, backticks, `bash -c '…'`, `eval`, `find -exec`, heredoc bodies skipped,
+`sudo`/`env`/`timeout`/`npx` wrappers and git's `-C` removed, `cd` followed). Then:
+
+```yaml
+hooks:
+  mode: dry-run # dry-run: log what enforce would stop, block nothing | enforce
+  shell:
+    deny: ["terraform destroy*", "curl * | sh"] # refused whatever anyone says
+    approval: ["kubectl delete *"] # held for `agentguard approve`
+  paths: # file edits and shell writes (>, tee, cp, mv, rm, sed -i)
+    deny: [".env", "*.pem"] # no slash: any file with that name; `src/**`: from the project root
+    approval: ["**/migrations/**"]
+  irreversible:
+    builtins: true # or a list: [git-push, merge, tag-delete, rm-outside-workspace, publish, send, guard-config]
+    window_s: 1800 # the authorizing turn is at most 30 minutes old
+    require_mention: true # ...and names the action
+    require_origin: false # true: only entries labelled as typed by a person (see below)
+    mentions: { git-push: [deploy] } # extra words per class
+    rules: # your own irreversible classes
+      - { name: deploy, shell: ["vercel --prod*", "fly deploy*"], mentions: [deploy] }
+```
+
+The MCP side's `deny` and `approval.tools` patterns also apply to MCP tools the coding agent calls
+directly (`mcp__crm__crm_delete_contact` matches `crm_delete_*`). The kill switch stops every
+guarded call in both modes.
+
+**Irreversible classes.** `git-push` (`git push`, not `--dry-run`); `merge` (`gh pr merge`,
+`glab mr merge`, `gh api -X PUT …/merge`); `tag-delete` (`git tag -d`, `gh release delete`);
+`rm-outside-workspace` (`rm`/`rmdir`/`unlink`/`shred`/`find -delete` on anything outside the
+project, the project itself, or — recursive only — a target that depends on a variable; temp
+directories are free); `publish` (`npm`/`pnpm`/`yarn`/`bun publish`, `cargo publish`,
+`twine upload`, `gem push`, `poetry`/`uv publish`, `docker push`, `gh release create`,
+`changeset`/`lerna publish`, `semantic-release`, …); `send` (`mail`/`sendmail`/`mutt`/…,
+`gh pr|issue create/comment/edit/…`, `gh api` writes, `curl` to Slack/Discord/Telegram/mail-API
+hosts, MCP tools named `send`/`reply`/`forward`/`post`); `guard-config` (edits to `agentguard.yaml`
+or a hook settings file, `agentguard hooks …`).
+
+**The human-turn gate.** An irreversible command runs when the latest entry a person wrote in the
+transcript (1) came after this session's previous irreversible command — one turn authorizes one
+— (2) is at most `window_s` old, and (3) names the action ("push it"), or is a bare "yes" / "go
+ahead" answering an assistant question that names it ("Want me to push to main?"). Otherwise the
+agent gets `APPROVAL_REQUIRED` with an id, and either the person says so in their own words or runs
+`agentguard approve <id>` (in Claude Code, `! npx @agentwares/agentguard approve <id>` runs it
+without going through the model); the identical retry then runs once.
+
+**How "a person wrote it" is decided** (Claude Code transcripts, checked against versions 2.1.170
+to 2.1.286). An entry counts only if: `type` is `user` and `message.role` is `user`; it is not
+`isSidechain` (a subagent's "user" turn is the parent model's prompt); not `isMeta` (skill bodies,
+reminders, peer messages); not a compaction summary; carries no `tool_result` and no
+`toolUseResult` (tool output rides in user entries); if it has an `origin`, `origin.kind` is
+`human` (`task-notification`, `peer`, `coordinator` are not); otherwise, if it has a `turnOrigin`,
+that is `human`; with neither label (older versions, queued prompts, `claude -p`), its text does
+not start with a harness wrapper (`<command-name>`, `<local-command-stdout>`, `<task-notification>`,
+`<bash-input>`, `[Request interrupted`, …), and `require_origin: true` refuses it outright. Text
+inside an assistant entry never counts — that is where a fabricated "user: yes, push it" lives.
+
+**What the agent sees.** A denial is Claude Code's / Codex's `permissionDecision: "deny"` (Gemini:
+`decision: "deny"`) whose reason is the usual agentguard body:
+
+```json
+{
+  "code": "APPROVAL_REQUIRED",
+  "cause": "\"git push origin main\" is irreversible (git-push (git push origin main)) and the latest message typed by a person (08:29:16) does not name this action (expected one of: push, ship). It needs a person's approval (approval apr_7c62fbad56).",
+  "fix": "stop and tell the user: this needs their approval. They can run `npx @agentwares/agentguard approve apr_7c62fbad56` in a terminal in this project (or type `! npx @agentwares/agentguard approve apr_7c62fbad56` in Claude Code), or say in their own words that you should do it; then retry this exact command once. Do not change it, work around it, or run the approval yourself: agentguard refuses an approval from the agent.",
+  "retryable": true,
+  "details": { "approvalId": "apr_7c62fbad56", "command": "agentguard approve apr_7c62fbad56" }
+}
+```
+
+and the person gets a one-line `systemMessage` with the approve command. agentguard never answers
+"allow": an allowed call goes through the agent's own permission prompts as before. The agent may
+not approve, deny or resume its own held actions, or write `.agentguard/` (refused in enforce).
+In dry-run the person sees "would have stopped …" and the call runs; `agentguard report` lists every
+such decision under **Coding-agent hooks**. Hook calls count against `caps` under `hook_calls`,
+`shell_commands`, `file_edits` and `irreversible` (per run = per agent session, and per day); the
+loop breaker stops the same file edit repeated.
+
+## Audit: which written rules your coding agents broke
+
+Teams write rules for their agents in CLAUDE.md, AGENTS.md, GEMINI.md and `.cursor/rules`, then
+cannot tell whether the agents keep them. `agentguard audit` reads the repository's rule files and
+this machine's past Claude Code and Codex sessions in it, and prints, per rule, how many sessions
+broke it and when. Measure first, then enforce what can be enforced.
+
+```sh
+npx -y @agentwares/agentguard audit                 # this repository, the last 7 days
+npx -y @agentwares/agentguard audit --since 30d     # or all, 24h, 2026-09-01; --client claude|codex
+npx -y @agentwares/agentguard audit --json          # counts, rule ids and dates (what /agentguard:audit reads)
+npx -y @agentwares/agentguard audit --enforce --preview   # the hook rules that would enforce them
+```
+
+```
+agentguard audit — /home/dev/acme · since 2026-09-30
+6 sessions in this repository (Claude Code 5, Codex 1). Read on this machine; nothing was sent anywhere.
+13 rules found (6 in CLAUDE.md, 3 in AGENTS.md, 1 in GEMINI.md, 2 in .cursor/rules/release.mdc, 1 in agentguard.yaml); 11 checkable.
+
+BROKEN
+  R1   Never push to `main`.   (CLAUDE.md:5)
+       no-push main — broken in 3 of 6 sessions (4 pushed); 1 refused by the harness
+         2026-10-06 10:40  git push origin main  · session 3f9a1c2b
+  R4   Run `pnpm check` before pushing.   (CLAUDE.md:8)
+       run "pnpm check" before push — broken in 3 of 6 sessions (4 pushed or opened a PR); 4 times
+…
+NOT CHECKABLE MECHANICALLY (2) — add an inline check (<!-- agentguard: … -->) or ask your agent with /agentguard:audit
+  R6   Write tests for new code.   (CLAUDE.md:13)
+```
+
+**The rules.** Every list item and every sentence that directs something (code blocks, tables and
+front matter skipped) is a rule, numbered across the files, checkable or not. A small pattern
+library, with no LLM, recognises the common checkable shapes: never push to / commit on / touch
+main directly; never force-push (or "rewrite history"); never `--no-verify` / skip the hooks; run
+`X` before committing or pushing (also tests, lint, typecheck); use pnpm, not npm; do not edit or
+commit `<path>` (`.env`, lockfiles, generated directories); do not add dependencies (without
+asking); never `rm -rf` outside the repo; never publish; never deploy; never use / run `<command>`.
+"unless asked" / "without asking" makes a break on a turn a person typed asking for it not count.
+Two explicit forms always work and win over the patterns:
+
+```markdown
+- Release notes go in CHANGELOG.md. <!-- agentguard: never "git tag*" -->
+- Keep functions small. <!-- agentguard: none -->
+```
+
+```yaml
+# agentguard.yaml
+audit:
+  rules:
+    - id: deploys
+      text: Only CI deploys
+      check: no-deploy # several: check: [no-verify, 'never "git reset --hard*"']
+```
+
+The check grammar: `no-push [branch,…]`, `no-commit-to [branch,…]`, `no-force-push [branch,…]`,
+`no-verify`, `run "<command>" before commit|push` (`@tests`, `@lint`, `@typecheck` for the usual
+commands), `use pnpm|npm|yarn|bun`, `no-pm npm,…`, `no-edit "<glob>" …`, `no-commit "<glob>" …`,
+`no-new-deps`, `no-rm-outside`, `no-publish`, `no-deploy`, `never "<command glob>" …`, each with an
+optional `unless-asked`; `none` marks a rule no script can check.
+
+**The sessions.** Claude Code transcripts (`~/.claude/projects`, or `$CLAUDE_CONFIG_DIR`) and
+Codex rollouts (`~/.codex/sessions`, or `$CODEX_HOME`) whose working directory is this repository
+or one of its worktrees, subagents included. The tool calls are read the way hook mode reads them
+(the same shell parser, the same edit targets, the same rm-outside-workspace and publish classes),
+and "asked for it" is hook mode's human-turn reading of the transcript. A push's branch is the one
+on the command line; for a bare `git push`, the one Claude Code recorded the push went to, else
+the branch checked out.
+
+**What leaves the screen: nothing.** No network, no telemetry, no LLM. The command or path that
+broke a rule is shown on your terminal only. `--json` and the cache
+(`~/.agentguard/audit-cache-v1/`, counts per transcript so a second run takes about a second and
+history survives Claude Code's 30-day transcript cleanup) hold counts, rule ids, dates, line
+numbers and hashes — never a command, a path or a prompt; a test plants marker strings in every
+part of a synthetic transcript and checks that none reaches either.
+
+**`--enforce`.** Writes the checkable rules into agentguard.yaml as hook-mode rules
+(`hooks.shell.deny`, `hooks.shell.approval` for "without asking", `hooks.paths.deny`, the
+built-in irreversible classes, a `deploy` rule), each with a comment naming the rule it came
+from; shows the diff; installs the hook if it is not installed. It never switches `hooks.mode`:
+a new hooks block starts in dry-run, and if yours is already `enforce` it writes nothing without
+`--yes`. "Run X before pushing" and "never commit on main" stay audit-only (a pre-execution hook
+sees one command, not the order or the checked-out branch).
+
+**In your agent.** `/agentguard:audit` (Claude Code plugin, Gemini CLI extension) runs
+`audit --json` and has your own agent judge the rules marked not checkable against the
+repository and its git history — no tokens of ours. `/agentguard:hooks` installs or checks hook
+mode.
+
 ## Policy
 
 `agentguard init` generates this file with every knob explained inline. The short form:
@@ -189,20 +389,24 @@ Run identity: `X-Run-Id` header (HTTP) → `_meta.runId` on the call → session
 
 ## Commands
 
-| Command                                                                                                                         | What it does                                                                                                                              |
-| ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `agentguard init [--client path] [--all] [--no-probe] [--mode enforce] [--undo]`                                                | generate the policy, rewrite the client config (project-level by default)                                                                 |
-| `agentguard proxy [--http --port 8788] [--agent name] [--run-id id] [--mode m]`                                                 | run the proxy (stdio default)                                                                                                             |
-| `agentguard report [--run id \| --all] [--json]`                                                                                | what this run did / would have destroyed / spent; where it was halted; chain status                                                       |
-| `agentguard diff [--run id]`                                                                                                    | mutation diff of faked writes                                                                                                             |
-| `agentguard verify [audit.jsonl]`                                                                                               | recompute the hash chain; exit 1 on the first break                                                                                       |
-| `agentguard status [--run id]`                                                                                                  | counters vs caps, kill state, pending approvals, running HTTP proxy                                                                       |
-| `agentguard tools [--json]`                                                                                                     | every exposed tool with class, verb, upstream and the reason                                                                              |
-| `agentguard kill [reason]` / `agentguard resume`                                                                                | halt everything now / clear it                                                                                                            |
-| `agentguard approvals [--all]` / `approve <id>` / `deny <id> [--note …]`                                                        | the approval queue                                                                                                                        |
-| `agentguard key create <agent> [--allow p]… [--deny p] [--writes n] [--spend n] [--mode m]` / `key list` / `key revoke <agent>` | scoped credentials                                                                                                                        |
-| `agentguard connect <key> [--write] [--client path] [--all] [--url base]`                                                       | point this machine's MCP client at a hosted proxy (paid tiers); prints the config, `--write` merges it in                                 |
-| `agentguard permission-diff [--base ref] [--head ref] [--fail-on-widen]`                                                        | which config changes widen agent permissions (also a [GitHub Action](https://github.com/agentwares/agentguard/tree/main/permission-diff)) |
+| Command                                                                                                                                   | What it does                                                                                                                                       |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agentguard init [--client path] [--all] [--no-probe] [--mode enforce] [--undo]`                                                          | generate the policy, rewrite the client config (project-level by default)                                                                          |
+| `agentguard proxy [--http --port 8788] [--agent name] [--run-id id] [--mode m]`                                                           | run the proxy (stdio default)                                                                                                                      |
+| `agentguard report [--run id \| --all] [--json]`                                                                                          | what this run did / would have destroyed / spent; where it was halted; chain status                                                                |
+| `agentguard diff [--run id]`                                                                                                              | mutation diff of faked writes                                                                                                                      |
+| `agentguard verify [audit.jsonl]`                                                                                                         | recompute the hash chain; exit 1 on the first break                                                                                                |
+| `agentguard status [--run id]`                                                                                                            | counters vs caps, kill state, pending approvals, running HTTP proxy                                                                                |
+| `agentguard tools [--json]`                                                                                                               | every exposed tool with class, verb, upstream and the reason                                                                                       |
+| `agentguard kill [reason]` / `agentguard resume`                                                                                          | halt everything now / clear it                                                                                                                     |
+| `agentguard approvals [--all]` / `approve <id>` / `deny <id> [--note …]`                                                                  | the approval queue                                                                                                                                 |
+| `agentguard key create <agent> [--allow p]… [--deny p] [--writes n] [--spend n] [--mode m]` / `key list` / `key revoke <agent>`           | scoped credentials                                                                                                                                 |
+| `agentguard connect <key> [--write] [--client path] [--all] [--url base]`                                                                 | point this machine's MCP client at a hosted proxy (paid tiers); prints the config, `--write` merges it in                                          |
+| `agentguard permission-diff [--base ref] [--head ref] [--fail-on-widen]`                                                                  | which config changes widen agent permissions (also a [GitHub Action](https://github.com/agentwares/agentguard/tree/main/permission-diff))          |
+| `agentguard hooks install [--project\|--user] [--client claude\|codex\|gemini\|all] [--command cmd]` / `hooks uninstall` / `hooks status` | put the policy in front of a coding agent's shell commands and file edits ([hook mode](#hook-mode-a-coding-agents-own-commands))                   |
+| `agentguard hook pre-tool-use [--client c]`                                                                                               | what the installed hook runs: reads the harness's JSON on stdin, answers in its format                                                             |
+| `agentguard audit [--since 7d\|30d\|all] [--client claude\|codex\|all] [--json] [--rules file] [--no-cache] [--no-evidence]`              | which written rules the coding agents broke, per rule, from this machine's sessions ([audit](#audit-which-written-rules-your-coding-agents-broke)) |
+| `agentguard audit --enforce [--preview] [--yes]`                                                                                          | write the checkable rules into agentguard.yaml as hook rules (dry-run), show the diff, install the hook                                            |
 
 ### Hosted tiers
 
@@ -239,11 +443,14 @@ node dist/cli.js report && node dist/cli.js diff && node dist/cli.js verify
 
 ## Conformance and tests
 
-`pnpm test` runs the CLI suite (52 tests; 68 more in `agentguard-core`, 11 in the SDK): the engine over InMemoryTransport, the spawned stdio proxy (with and without a policy file), the Streamable HTTP proxy with `X-Run-Id`, scoped keys and control endpoints, `init` against real configs, and a recorded-fixture replay (`fixtures/recorded/crm-session.json`; re-record with `RECORD_FIXTURES=1`). `pnpm conformance` runs the official `@modelcontextprotocol/conformance` server suite against the proxy with a sample server behind it (tools, resources, prompts, completions, logging, progress, sampling and elicitation are relayed).
+`pnpm test` runs the CLI suite (85 tests; 191 more in `agentguard-core`, 11 in the SDK): the audit end to end on a synthetic history (rule files in every format, Claude Code and Codex sessions with known kept and broken rules, marker strings that must never reach the cache or `--json`, `--enforce`), hook mode end to end (install for three clients, each client's answer format, the approve flow, synthetic transcripts reproducing a model-written "user: yes, push it"), the engine over InMemoryTransport, the spawned stdio proxy (with and without a policy file), the Streamable HTTP proxy with `X-Run-Id`, scoped keys and control endpoints, `init` against real configs, and a recorded-fixture replay (`fixtures/recorded/crm-session.json`; re-record with `RECORD_FIXTURES=1`). `pnpm conformance` runs the official `@modelcontextprotocol/conformance` server suite against the proxy with a sample server behind it (tools, resources, prompts, completions, logging, progress, sampling and elicitation are relayed).
 
 ## Limits (honest)
 
-- The proxy sees MCP tool calls. Token spend on the model API is only visible through the SDK's guarded `fetch` (or `spend.tools` rules for MCP tools that call models).
+- The proxy sees MCP tool calls; hook mode sees a coding agent's shell commands, file edits and direct MCP calls. Token spend on the model API is only visible through the SDK's guarded `fetch` (or `spend.tools` rules for MCP tools that call models).
+- Hook mode is a guardrail against an agent acting without a person's say-so, not a sandbox against a hostile one. It reads command lines, not what runs: a script (`./release.sh`, `make deploy`) that pushes inside is only caught by a `shell` rule naming it; `xargs rm` targets come from stdin and are not checked; a variable's value is unknown (a recursive `rm` of one counts as outside the workspace). "Names the action" is a word match: "don't push yet" names push. Each class's words are in the policy block; add your language's with `irreversible.mentions`.
+- Claude Code writes the transcript asynchronously; if the turn that authorizes a command is not on disk yet when the hook runs, the command is held (fail closed) and the retry passes. A `claude -p` prompt has no `origin` label, so it counts as the person's turn unless `require_origin: true`. Codex and Gemini CLI get no human-turn gate (their irreversible commands always need `agentguard approve` in enforce). If the hook itself fails (a broken `agentguard.yaml`), the call runs and the person sees "this call was NOT checked".
+- The audit counts what the transcripts show. Rules are recognised by patterns, not understood: a rule worded unusually is listed as not checkable (add an inline check), and one worded like a pattern it does not mean can be mis-read (mark it `<!-- agentguard: none -->`). A bare `git push` counts as a push to the checked-out branch only on the main thread (a subagent's `gitBranch` can be the session's, not its worktree's); an attempt the harness refused still counts, marked as refused. Sessions are matched by working directory: a worktree outside the repository is not included. Codex rollouts do not say which turns a person typed, so an `unless-asked` break there is reported as undetermined; Codex's JavaScript `exec` tool is counted, not read.
 - Dry-run synthesizes results from the tool's `outputSchema`; agents that depend on real ids from a create → update chain will see plausible but fake ids. `dry_run.tools` lets you fake only the dangerous tools in enforce mode.
 - Per-day counters are a JSON file under a directory lock; fine for a workstation or one box, not a fleet. The hosted tier (coming) is the shared-state version.
 - Slack "Approve" buttons are links to the local HTTP proxy; they work for people who can reach it. Without HTTP mode the message carries the `agentguard approve <id>` command.

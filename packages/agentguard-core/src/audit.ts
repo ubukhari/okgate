@@ -36,8 +36,27 @@ export interface AuditEntry {
   latency_ms?: number;
   /** why it was classified that way / why it was blocked */
   reason?: string;
+  /** hook mode: a coding agent's own shell command, file edit or tool call */
+  hook?: HookAuditInfo;
   prev_hash: string;
   hash: string;
+}
+
+/** What hook mode decided about one call of a coding agent (Claude Code, Codex, Gemini CLI). */
+export interface HookAuditInfo {
+  client: string;
+  /** the command, or the tool and the paths it writes (credentials masked) */
+  summary: string;
+  /** what agentguard told the harness */
+  decision: "allow" | "deny";
+  /** dry-run: what enforce mode would have returned; nothing was blocked */
+  would?: { code: string; cause: string };
+  /** irreversible classes the call fell into */
+  irreversible?: string[];
+  /** the human-turn gate, for an irreversible call */
+  human_turn?: { ok: boolean; reason: string; at?: string };
+  /** the approval that let it through, or the one it now waits on */
+  approval_id?: string;
 }
 
 export type AuditEntryInput = Omit<AuditEntry, "seq" | "prev_hash" | "hash">;

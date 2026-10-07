@@ -17,7 +17,8 @@ export default defineConfig({
   dts: { entry: { index: "src/index.ts" } },
   sourcemap: true,
   clean: true,
-  splitting: false,
+  // chunks keep the MCP SDK out of `agentguard hook pre-tool-use`'s startup (see cli.ts)
+  splitting: true,
   noExternal: [/^@agentwares\/(mcp-kit|notify|x402)$/],
   banner: { js: "" },
 });

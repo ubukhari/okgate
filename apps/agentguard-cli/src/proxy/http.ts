@@ -6,7 +6,6 @@
 import { createHttpHandler, localhostHosts, type HttpHandler } from "@agentwares/mcp-kit";
 import { writeFileSync, unlinkSync, existsSync, mkdirSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { join } from "node:path";
 import { FileKillSwitch } from "@agentwares/agentguard-core/node";
 import type { ProxyRuntime } from "./runtime.js";
 import { createDownstreamServer, PROXY_VERSION } from "./server.js";
@@ -28,17 +27,9 @@ export interface HttpProxy {
   close(): Promise<void>;
 }
 
-export interface HttpRegistration {
-  url: string;
-  baseUrl: string;
-  token: string;
-  pid: number;
-  startedAt: string;
-}
+import { registrationPath, type HttpRegistration } from "../registration.js";
 
-export function registrationPath(stateDir: string): string {
-  return join(stateDir, "http.json");
-}
+export { registrationPath, type HttpRegistration };
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
