@@ -227,7 +227,7 @@ export async function initCommand(args: ParsedArgs, io: Io): Promise<number> {
   }
   if (chosen.length === 0)
     io.out(
-      "found   no MCP config (Claude Code .mcp.json, Cursor, VS Code, Claude Desktop, Windsurf) — writing a policy with no upstreams",
+      "found   no MCP config (Claude Code .mcp.json, Cursor, VS Code, Claude Desktop, Windsurf, Gemini CLI) — writing a policy with no upstreams",
     );
   const { upstreams, skipped } = serversToUpstreams(servers);
   for (const s of skipped) io.err(`skipped ${s.name}: ${s.reason}`);

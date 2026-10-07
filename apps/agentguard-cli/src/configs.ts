@@ -1,6 +1,7 @@
 /**
  * Find the agent's existing MCP config (Claude Code, Claude Desktop, Cursor, VS Code, Windsurf,
- * generic `mcp.json`), read its servers, and rewrite it so every server goes through the proxy.
+ * Gemini CLI, generic `mcp.json`), read its servers, and rewrite it so every server goes through
+ * the proxy.
  */
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
@@ -15,6 +16,8 @@ export type ClientKind =
   | "cursor-user"
   | "vscode"
   | "windsurf"
+  | "gemini-project"
+  | "gemini-user"
   | "generic";
 
 export interface ClientConfigFile {
@@ -32,6 +35,8 @@ export interface ServerEntry {
   env?: Record<string, string>;
   cwd?: string;
   url?: string;
+  /** Gemini CLI's name for a Streamable HTTP endpoint (its `url` means SSE) */
+  httpUrl?: string;
   headers?: Record<string, string>;
   [k: string]: unknown;
 }
@@ -75,6 +80,12 @@ export function candidateConfigs(
       serversKey: "servers",
     },
     { kind: "generic", label: "mcp.json", path: join(cwd, "mcp.json"), serversKey: "mcpServers" },
+    {
+      kind: "gemini-project",
+      label: "Gemini CLI (project .gemini/settings.json)",
+      path: join(cwd, ".gemini", "settings.json"),
+      serversKey: "mcpServers",
+    },
     { kind: "claude-desktop", label: "Claude Desktop", path: desktop, serversKey: "mcpServers" },
     {
       kind: "cursor-user",
@@ -94,7 +105,22 @@ export function candidateConfigs(
       path: join(home, ".claude.json"),
       serversKey: "mcpServers",
     },
+    {
+      kind: "gemini-user",
+      label: "Gemini CLI (user ~/.gemini/settings.json)",
+      path: join(home, ".gemini", "settings.json"),
+      serversKey: "mcpServers",
+    },
   ];
+}
+
+/** Gemini CLI reads `httpUrl` for Streamable HTTP and `url` for SSE, unlike every other client. */
+export function isGeminiConfig(file: ClientConfigFile): boolean {
+  return (
+    file.kind === "gemini-project" ||
+    file.kind === "gemini-user" ||
+    /[/\\]\.gemini[/\\]settings\.json$/.test(file.path)
+  );
 }
 
 /** Configs that exist on disk, project-level first. */
@@ -159,10 +185,12 @@ export function serversToUpstreams(servers: Record<string, ServerEntry>): {
     }
     const name =
       rawName.replace(/[^a-zA-Z0-9_-]/g, "-").replace(/^[^a-zA-Z0-9]+/, "") || "upstream";
-    if (entry.url) {
+    // `httpUrl` is Gemini CLI's Streamable HTTP field; agentguard reaches upstreams that way.
+    const url = typeof entry.httpUrl === "string" ? entry.httpUrl : entry.url;
+    if (url) {
       upstreams.push({
         name,
-        url: entry.url,
+        url,
         headers: entry.headers ?? {},
         args: [],
         env: {},

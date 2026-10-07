@@ -1,0 +1,18 @@
+# agentguard demo policy for the container: the fake CRM bundled with the CLI, behind the proxy in
+# dry-run, so its tools show through agentguard. Nothing here touches a real system.
+#
+#   docker run -i --rm agentguard proxy --config /app/demo/agentguard.yaml
+version: 1
+mode: dry-run
+upstreams:
+  - name: crm
+    command: node
+    args: [/app/dist/fixtures/crm-server.js]
+approval:
+  tools: [crm_delete_*]
+caps:
+  per_run: { tool_calls: 400, writes: 50, deletes: 10, emails: 5, spend_usd: 25 }
+# The image runs as the unprivileged `node` user: keep state where it can write.
+state: { dir: /tmp/agentguard }
+audit: { path: /tmp/agentguard/audit.jsonl }
+kill: { file: /tmp/agentguard/KILL }

@@ -93,6 +93,39 @@ describe("init", () => {
     expect(Object.keys(restored.mcpServers)).toEqual(["crm", "remote"]);
   });
 
+  it("routes Gemini CLI's project settings, reading httpUrl as Streamable HTTP and keeping other settings", async () => {
+    mkdirSync(join(dir, ".gemini"));
+    const settings = join(dir, ".gemini", "settings.json");
+    writeFileSync(
+      settings,
+      JSON.stringify({
+        theme: "Default",
+        mcpServers: {
+          crm: { command: "crm-server", args: ["--stdio"] },
+          docs: { httpUrl: "https://docs.example.invalid/mcp", headers: { "X-Key": "k" } },
+        },
+      }),
+    );
+    expect(await main(["init", "--no-probe"], io)).toBe(0);
+    expect(out.join("\n")).toContain("Gemini CLI");
+    const policy = loadPolicyFile(join(dir, "agentguard.yaml"));
+    expect(policy.policy.upstreams.map((u) => u.name)).toEqual(["crm", "docs"]);
+    expect(policy.policy.upstreams[1]).toMatchObject({
+      url: "https://docs.example.invalid/mcp",
+      headers: { "X-Key": "k" },
+    });
+    const rewritten = JSON.parse(readFileSync(settings, "utf8")) as {
+      theme: string;
+      mcpServers: Record<string, { command: string; args: string[] }>;
+    };
+    expect(rewritten.theme).toBe("Default");
+    expect(Object.keys(rewritten.mcpServers)).toEqual(["agentguard"]);
+    expect(rewritten.mcpServers.agentguard).toEqual({
+      command: "npx",
+      args: ["-y", "@agentwares/agentguard", "proxy", "--config", join(dir, "agentguard.yaml")],
+    });
+  });
+
   it("never rewrites user-level configs without --client", async () => {
     mkdirSync(join(dir, ".cursor"));
     writeFileSync(

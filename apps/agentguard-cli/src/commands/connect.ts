@@ -14,6 +14,7 @@ import { flagBool, flagString, type ParsedArgs } from "../args.js";
 import {
   describeConfigPath,
   detectClientConfigs,
+  isGeminiConfig,
   mergeServerIntoConfig,
   PROXY_SERVER_NAME,
   type ClientConfigFile,
@@ -144,7 +145,11 @@ export async function connectCommand(
         io.err(`no MCP config at ${c.path}`);
         return 1;
       }
-      const { backup, replaced } = mergeServerIntoConfig(c, PROXY_SERVER_NAME, entry);
+      // Gemini CLI takes Streamable HTTP as `httpUrl`; its `url` would be dialled as SSE.
+      const forClient: ServerEntry = isGeminiConfig(c)
+        ? { httpUrl: entry.url, ...(entry.headers ? { headers: entry.headers } : {}) }
+        : entry;
+      const { backup, replaced } = mergeServerIntoConfig(c, PROXY_SERVER_NAME, forClient);
       io.out(
         `${replaced ? "updated" : "wrote  "} ${rel(c.path)} (${c.label}) → ${PROXY_SERVER_NAME} = ${conn.mcpUrl}`,
       );

@@ -1,0 +1,29 @@
+# /agentguard:report — explain what the last agent run did, or would have done in dry-run.
+description = "Explain agentguard's report of the last agent run: what dry-run faked, what ran, every call it halted."
+prompt = """
+Explain the last agent run that went through agentguard (an MCP policy proxy).
+
+1. Run with the shell tool, from the directory that holds agentguard.yaml:
+   npx -y @agentwares/agentguard@latest report {{args}}
+   If it fails with INVALID_POLICY and "no policy file", agentguard is not set up here: say so and
+   suggest /agentguard:init. If the policy lives elsewhere, rerun with `--config <path>`.
+
+2. Explain the report in plain words, in this order:
+   - scope: how many tool calls, over which upstream servers, in which mode;
+   - what it would have done (dry-run only): records created, updated and deleted, messages sent,
+     money spent. None of it executed. Lead with anything destructive or costly;
+   - where agentguard stepped in, one line per halt: CAP_EXCEEDED (a cap in `caps:` was reached),
+     LOOP_DETECTED (the same call or an A-B-A-B cycle repeated), APPROVAL_REQUIRED (a tool under
+     `approval.tools` waited for a human: `npx -y @agentwares/agentguard approvals`, then
+     `approve <id>` or `deny <id>`), KILLED (the kill switch was on), TOOL_DENIED (the tool was
+     denied by the policy or outside an agent key's allow list);
+   - the "Audit chain" line. If it says BROKEN, the log was edited and the report cannot be trusted.
+
+3. If the run would have deleted, sent or spent anything, run
+   `npx -y @agentwares/agentguard@latest diff` and show the records that would have changed.
+
+4. Finish with a recommendation: destructive tools that ran and are not under `approval.tools`,
+   caps that were hit or sit far above what the run used, and tools classified as writes that only
+   read. Say whether the run looks safe to repeat with `mode: enforce`. The user decides; do not
+   edit agentguard.yaml unless asked.
+"""

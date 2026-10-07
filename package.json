@@ -1,6 +1,6 @@
 {
   "name": "agentwares-agentguard",
-  "version": "0.0.0",
+  "version": "0.1.6",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@9.15.9",
@@ -8,6 +8,24 @@
     "node": ">=22"
   },
   "description": "MCP policy proxy for AI agents: hard spend limits, destructive-action approvals, kill switch, scoped keys, dry-run diffs, loop breaker, hash-chained audit log.",
+  "keywords": [
+    "mcp",
+    "mcp-proxy",
+    "model-context-protocol",
+    "ai-agents",
+    "agent-safety",
+    "spend-limit",
+    "kill-switch",
+    "dry-run",
+    "audit-log",
+    "claude-code",
+    "cursor",
+    "guardrails",
+    "mcp-server",
+    "mcp-gateway",
+    "mcp-security",
+    "human-in-the-loop"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",

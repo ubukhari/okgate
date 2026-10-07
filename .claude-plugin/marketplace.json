@@ -1,0 +1,27 @@
+{
+  "name": "agentwares",
+  "description": "agentguard, an MCP policy proxy, set up from inside Claude Code: dry-run first, then spend caps, approvals for destructive tools, a kill switch and a hash-chained audit log. Open source, no account.",
+  "owner": {
+    "name": "agentwares",
+    "url": "https://github.com/agentwares"
+  },
+  "plugins": [
+    {
+      "name": "agentguard",
+      "source": "./plugins/agentguard",
+      "description": "Put agentguard in front of this project's MCP servers and read what an agent run did or would have done. /agentguard:init runs `npx @agentwares/agentguard init`; /agentguard:report explains the dry-run report.",
+      "category": "security",
+      "tags": [
+        "mcp",
+        "mcp-proxy",
+        "mcp-gateway",
+        "mcp-security",
+        "dry-run",
+        "spend-limit",
+        "kill-switch",
+        "human-in-the-loop",
+        "audit-log"
+      ]
+    }
+  ]
+}

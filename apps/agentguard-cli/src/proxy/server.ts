@@ -30,6 +30,13 @@ import {
   type GuardResult,
 } from "@agentwares/agentguard-core";
 import { version as cliVersion } from "../version.js";
+import {
+  INIT_COMMAND,
+  callOwnTool,
+  createOwnTools,
+  ownToolList,
+  ownToolsActive,
+} from "./own-tools.js";
 import type { DownstreamSession, ExposedTool, ProxyRuntime } from "./runtime.js";
 
 /**
@@ -161,6 +168,15 @@ function killedError(state: { reason?: string; source?: string }): Error {
   );
 }
 
+/** What the client is told about this server, which depends on whether it fronts anything. */
+export function serverInstructions(runtime: ProxyRuntime): string {
+  if (ownToolsActive(runtime))
+    return `agentguard is an MCP policy proxy, and this one fronts no upstream MCP servers${
+      runtime.configured ? "" : ` (no policy file at ${runtime.loaded.path})`
+    }, so it serves only its own read-only tools: agentguard_get_status (what it guards, caps, kill switch), agentguard_get_report (what a run did or would have done) and agentguard_verify_audit_log. To guard the user's MCP servers, run \`${INIT_COMMAND}\` in the project directory and restart the client.`;
+  return `Tool calls pass through agentguard (${runtime.policy.mode} mode). Errors carry { code, cause, fix, retryable }; follow "fix". CAP_EXCEEDED, LOOP_DETECTED and KILLED are not retryable: stop and report to the user. APPROVAL_REQUIRED: relay the approval command to the user, then retry the identical call once.`;
+}
+
 /** Build the per-session MCP server. */
 export function createDownstreamServer(
   runtime: ProxyRuntime,
@@ -176,9 +192,10 @@ export function createDownstreamServer(
         logging: {},
         completions: {},
       },
-      instructions: `Tool calls pass through agentguard (${runtime.policy.mode} mode). Errors carry { code, cause, fix, retryable }; follow "fix". CAP_EXCEEDED, LOOP_DETECTED and KILLED are not retryable: stop and report to the user. APPROVAL_REQUIRED: relay the approval command to the user, then retry the identical call once.`,
+      instructions: serverInstructions(runtime),
     },
   );
+  const ownTools = createOwnTools(runtime);
   const session: DownstreamSession = {
     id: crypto.randomUUID(),
     server,
@@ -220,6 +237,7 @@ export function createDownstreamServer(
     touch();
     const { agent } = await agentFor(extra);
     const scope = agent === undefined ? runtime.agent : agent;
+    if (ownToolsActive(runtime)) return { tools: ownToolList(ownTools) };
     return {
       tools: runtime
         .listTools(scope)
@@ -229,6 +247,16 @@ export function createDownstreamServer(
 
   low.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     touch();
+    if (ownToolsActive(runtime)) {
+      // Read-only answers about agentguard itself: no upstream, no policy decision, no audit entry.
+      const own = await callOwnTool(
+        ownTools,
+        req.params.name,
+        req.params.arguments ?? {},
+        String(extra.requestId),
+      );
+      if (own) return own;
+    }
     const { agent, error } = await agentFor(extra);
     const runId = runIdFor(extra, req.params._meta, opts.defaultRunId ?? runtime.defaultRunId);
     if (error) {

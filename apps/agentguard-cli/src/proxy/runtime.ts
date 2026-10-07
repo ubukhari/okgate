@@ -93,6 +93,11 @@ export interface RuntimeOptions {
   connectTimeoutMs?: number;
   /** in-process upstreams for tests: name → already-connected client */
   clients?: Record<string, Client>;
+  /**
+   * false when no policy file was found and the proxy runs on the default policy with no
+   * upstreams, serving only its own read-only tools (default true)
+   */
+  configured?: boolean;
 }
 
 export interface CallContext {
@@ -110,6 +115,7 @@ export class ProxyRuntime {
   readonly guard: Guard;
   readonly agent: AgentScope | null | undefined;
   readonly defaultRunId: string;
+  readonly configured: boolean;
   readonly sessions = new Set<DownstreamSession>();
   private readonly connections = new Map<string, Connection>();
   private exposed: ExposedTool[] = [];
@@ -127,6 +133,7 @@ export class ProxyRuntime {
     this.guard = opts.guard;
     this.agent = opts.agent;
     this.defaultRunId = opts.defaultRunId;
+    this.configured = opts.configured ?? true;
     this.log = opts.log ?? ((line) => process.stderr.write(`[agentguard] ${line}\n`));
     this.connectTimeoutMs = opts.connectTimeoutMs ?? 15_000;
     this.testClients = opts.clients ?? {};

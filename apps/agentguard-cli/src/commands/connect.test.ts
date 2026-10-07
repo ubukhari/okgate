@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -150,6 +150,31 @@ describe("connect", () => {
     const h = harness(dir);
     expect(await connectCommand(parseArgs(["connect"]), h.io, respond(RESPONSE))).toBe(2);
     expect(h.stderr()).toContain("usage: agentguard connect <key>");
+  });
+
+  it("--write into Gemini CLI's settings uses httpUrl, which Gemini dials as Streamable HTTP", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ag-connect-"));
+    mkdirSync(join(dir, ".gemini"));
+    const configPath = join(dir, ".gemini", "settings.json");
+    writeFileSync(configPath, JSON.stringify({ theme: "Default", mcpServers: {} }));
+    const h = harness(dir);
+
+    const code = await connectCommand(
+      parseArgs(["connect", "agk_live_key", "--write"]),
+      h.io,
+      respond(RESPONSE),
+    );
+
+    expect(code).toBe(0);
+    const written = JSON.parse(readFileSync(configPath, "utf8")) as {
+      theme: string;
+      mcpServers: Record<string, unknown>;
+    };
+    expect(written.theme).toBe("Default");
+    expect(written.mcpServers.agentguard).toEqual({
+      httpUrl: "https://proxy.test/px_abc123/mcp",
+      headers: { Authorization: "Bearer agk_live_key" },
+    });
   });
 
   it("--write with no MCP config prints the block and exits non-zero", async () => {

@@ -117,6 +117,10 @@ export async function toolsCommand(args: ParsedArgs, io: Io): Promise<number> {
     io.err(
       `${u.connected ? "ok  " : "down"} ${u.name}: ${u.connected ? `${u.tools} tools` : u.error}`,
     );
+  if (result.upstreams.length === 0)
+    io.err(
+      "no upstreams in the policy: an MCP client sees agentguard's own read-only tools instead (agentguard_get_status, agentguard_get_report, agentguard_verify_audit_log)",
+    );
   for (const line of formatToolTable(result.tools)) io.out(line);
   const counts = result.tools.reduce<Record<string, number>>(
     (acc, t) => ({ ...acc, [t.classification.class]: (acc[t.classification.class] ?? 0) + 1 }),

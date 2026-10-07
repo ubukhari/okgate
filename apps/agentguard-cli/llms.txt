@@ -2,6 +2,10 @@
 
 > MCP policy proxy for AI agents: hard spend limits, destructive-action gating with approvals, kill switch, scoped agent keys, dry-run writes with mutation diffs, semantic loop breaker, blast-radius caps, hash-chained audit log. CLI `npx @agentwares/agentguard`; SDK `@agentwares/agentguard-sdk`. No LLM calls, no phone-home, no account.
 
+Set up: `npx -y @agentwares/agentguard init` in the project directory writes agentguard.yaml (dry-run) and routes the project's MCP servers through the proxy. The same command ships as a Claude Code plugin (`/plugin marketplace add agentwares/agentguard`, then `/plugin install agentguard@agentwares`) and a Gemini CLI extension (`gemini extensions install https://github.com/agentwares/agentguard`).
+
+Started with no agentguard.yaml (an editor install button, a registry install, the repo's Dockerfile), the proxy fronts no servers and serves three read-only tools of its own: `agentguard_get_status` (what it guards, caps used and remaining, kill switch, pending approvals), `agentguard_get_report` (what a run did, or would have done in dry-run) and `agentguard_verify_audit_log` (the hash chain). With upstreams configured, the agent sees only the upstreams' tools.
+
 ## Links
 
 - [README (install in 60 seconds)](https://github.com/agentwares/agentguard/tree/main/apps/agentguard-cli#readme)

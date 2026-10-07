@@ -52,14 +52,14 @@ npx @agentwares/agentguard init --client ~/Library/Application\ Support/Claude/c
 npx @agentwares/agentguard init --undo                           # restore the backup
 ```
 
-`init` writes `agentguard.yaml` next to your config, backs the config up (`*.agentguard-backup`), and replaces its servers with one entry:
+`init` finds `.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, `mcp.json` and `.gemini/settings.json` in the project (user-level files only with `--client`), writes `agentguard.yaml` next to them, backs the config up (`*.agentguard-backup`), and replaces its servers with one entry:
 
 ```json
 {
   "mcpServers": {
     "agentguard": {
       "command": "npx",
-      "args": ["-y", "agentguard", "proxy", "--config", "/abs/path/agentguard.yaml"]
+      "args": ["-y", "@agentwares/agentguard", "proxy", "--config", "/abs/path/agentguard.yaml"]
     }
   }
 }
@@ -67,7 +67,57 @@ npx @agentwares/agentguard init --undo                           # restore the b
 
 Tools keep their names (prefixed `<upstream>__` only on collision). Your MCP client sees one server; agentguard connects to all of them and holds their credentials.
 
-Spawned with no arguments at all — what an install from the MCP registry does — `agentguard` serves the same stdio proxy and reads `AGENTGUARD_CONFIG` or `./agentguard.yaml`. In a terminal it prints the help instead.
+### From your agent or editor
+
+The same `init`, from where you already work:
+
+- **Claude Code** (and Copilot CLI, which reads the same marketplace file):
+  `/plugin marketplace add agentwares/agentguard`, then `/plugin install agentguard@agentwares`.
+  `/agentguard:init` runs `init` and explains the policy it wrote; `/agentguard:report` explains
+  what a run did or would have done.
+- **Gemini CLI**: `gemini extensions install https://github.com/agentwares/agentguard`, then
+  `/agentguard:init` and `/agentguard:report`. `init` reads `.gemini/settings.json`; Gemini's
+  `httpUrl` servers are proxied as Streamable HTTP (SSE-only `url` servers are not supported).
+- **Cursor and VS Code**: one click adds agentguard as an MCP server
+  (`npx -y @agentwares/agentguard proxy`):
+
+  [![Add agentguard to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/link/mcp/install?name=agentguard&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBhZ2VudHdhcmVzL2FnZW50Z3VhcmQiLCJwcm94eSJdfQ%3D%3D)
+  [![Install agentguard in VS Code](https://img.shields.io/badge/VS_Code-Install_agentguard-0098FF?logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect/mcp/install?name=agentguard&config=%7B%22type%22%3A%22stdio%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40agentwares%2Fagentguard%22%2C%22proxy%22%5D%7D)
+
+  The buttons open `cursor://anysphere.cursor-deeplink/mcp/install?name=agentguard&config=…` and
+  `vscode:mcp/install?{…}`; GitHub does not render those schemes as links, so the buttons go
+  through `cursor.com/link` and `vscode.dev/redirect`. Where the editor starts it next to an
+  `agentguard.yaml`, that server guards what the policy lists. Anywhere else it fronts nothing
+  and serves the three read-only tools below, the first of which tells you to run `init` in the
+  project. `init` then writes the project-level entry that does the guarding.
+
+### Started with no policy file
+
+Spawned with no arguments at all (what an install from the MCP registry does), `agentguard`
+serves the stdio proxy and reads `AGENTGUARD_CONFIG` or `./agentguard.yaml`; in a terminal it
+prints the help instead. If neither names a file that exists, it does not exit: it fronts no
+servers, writes nothing, and serves three read-only tools of its own, each with a title,
+`readOnlyHint: true` and a strict schema:
+
+| Tool                          | Answers                                                                                                                                |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `agentguard_get_status`       | which policy file it loaded or looked for, mode, upstreams, caps used and remaining, kill switch, pending approvals, and the next step |
+| `agentguard_get_report`       | what a run did, or would have done in dry-run, and every call that was halted (`run_id` optional)                                      |
+| `agentguard_verify_audit_log` | whether the hash-chained audit log verifies, its entry count and head hash                                                             |
+
+A policy with no `upstreams:` serves the same three. Once upstreams are configured the agent sees
+only their tools, exactly as before. A file named with `--config` or `AGENTGUARD_CONFIG` that does
+not exist is still an error.
+
+### Docker
+
+The repo's `Dockerfile` builds the CLI from source and serves it over stdio:
+
+```sh
+docker build -t agentguard .
+docker run -i --rm agentguard                                            # no policy: the three tools above
+docker run -i --rm agentguard proxy --config /app/demo/agentguard.yaml   # a fake CRM behind the proxy, dry-run
+```
 
 Prefer HTTP (several agents, scoped keys, Slack approve buttons)? `agentguard proxy --http --port 8788` and point clients at `http://127.0.0.1:8788/mcp` with an `X-Run-Id` header per run and `Authorization: Bearer agk_…` per agent.
 
@@ -139,20 +189,20 @@ Run identity: `X-Run-Id` header (HTTP) → `_meta.runId` on the call → session
 
 ## Commands
 
-| Command                                                                                                                         | What it does                                                                                                                                            |
-| ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agentguard init [--client path] [--all] [--no-probe] [--mode enforce] [--undo]`                                                | generate the policy, rewrite the client config (project-level by default)                                                                               |
-| `agentguard proxy [--http --port 8788] [--agent name] [--run-id id] [--mode m]`                                                 | run the proxy (stdio default)                                                                                                                           |
-| `agentguard report [--run id \| --all] [--json]`                                                                                | what this run did / would have destroyed / spent; where it was halted; chain status                                                                     |
-| `agentguard diff [--run id]`                                                                                                    | mutation diff of faked writes                                                                                                                           |
-| `agentguard verify [audit.jsonl]`                                                                                               | recompute the hash chain; exit 1 on the first break                                                                                                     |
-| `agentguard status [--run id]`                                                                                                  | counters vs caps, kill state, pending approvals, running HTTP proxy                                                                                     |
-| `agentguard tools [--json]`                                                                                                     | every exposed tool with class, verb, upstream and the reason                                                                                            |
-| `agentguard kill [reason]` / `agentguard resume`                                                                                | halt everything now / clear it                                                                                                                          |
-| `agentguard approvals [--all]` / `approve <id>` / `deny <id> [--note …]`                                                        | the approval queue                                                                                                                                      |
-| `agentguard key create <agent> [--allow p]… [--deny p] [--writes n] [--spend n] [--mode m]` / `key list` / `key revoke <agent>` | scoped credentials                                                                                                                                      |
-| `agentguard connect <key> [--write] [--client path] [--all] [--url base]`                                                       | point this machine's MCP client at a hosted proxy (paid tiers); prints the config, `--write` merges it in                                               |
-| `agentguard permission-diff [--base ref] [--head ref] [--fail-on-widen]`                                                        | which config changes widen agent permissions (also a [GitHub Action](https://github.com/agentwares/agentguard/tree/main/assets/permission-diff-action)) |
+| Command                                                                                                                         | What it does                                                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `agentguard init [--client path] [--all] [--no-probe] [--mode enforce] [--undo]`                                                | generate the policy, rewrite the client config (project-level by default)                                                                 |
+| `agentguard proxy [--http --port 8788] [--agent name] [--run-id id] [--mode m]`                                                 | run the proxy (stdio default)                                                                                                             |
+| `agentguard report [--run id \| --all] [--json]`                                                                                | what this run did / would have destroyed / spent; where it was halted; chain status                                                       |
+| `agentguard diff [--run id]`                                                                                                    | mutation diff of faked writes                                                                                                             |
+| `agentguard verify [audit.jsonl]`                                                                                               | recompute the hash chain; exit 1 on the first break                                                                                       |
+| `agentguard status [--run id]`                                                                                                  | counters vs caps, kill state, pending approvals, running HTTP proxy                                                                       |
+| `agentguard tools [--json]`                                                                                                     | every exposed tool with class, verb, upstream and the reason                                                                              |
+| `agentguard kill [reason]` / `agentguard resume`                                                                                | halt everything now / clear it                                                                                                            |
+| `agentguard approvals [--all]` / `approve <id>` / `deny <id> [--note …]`                                                        | the approval queue                                                                                                                        |
+| `agentguard key create <agent> [--allow p]… [--deny p] [--writes n] [--spend n] [--mode m]` / `key list` / `key revoke <agent>` | scoped credentials                                                                                                                        |
+| `agentguard connect <key> [--write] [--client path] [--all] [--url base]`                                                       | point this machine's MCP client at a hosted proxy (paid tiers); prints the config, `--write` merges it in                                 |
+| `agentguard permission-diff [--base ref] [--head ref] [--fail-on-widen]`                                                        | which config changes widen agent permissions (also a [GitHub Action](https://github.com/agentwares/agentguard/tree/main/permission-diff)) |
 
 ### Hosted tiers
 
@@ -189,7 +239,7 @@ node dist/cli.js report && node dist/cli.js diff && node dist/cli.js verify
 
 ## Conformance and tests
 
-`pnpm test` runs the CLI suite (24 tests; 64 more in `agentguard-core`, 10 in the SDK): the engine over InMemoryTransport, the spawned stdio proxy, the Streamable HTTP proxy with `X-Run-Id`, scoped keys and control endpoints, `init` against real configs, and a recorded-fixture replay (`fixtures/recorded/crm-session.json`; re-record with `RECORD_FIXTURES=1`). `pnpm conformance` runs the official `@modelcontextprotocol/conformance` server suite against the proxy with a sample server behind it (tools, resources, prompts, completions, logging, progress, sampling and elicitation are relayed).
+`pnpm test` runs the CLI suite (52 tests; 68 more in `agentguard-core`, 11 in the SDK): the engine over InMemoryTransport, the spawned stdio proxy (with and without a policy file), the Streamable HTTP proxy with `X-Run-Id`, scoped keys and control endpoints, `init` against real configs, and a recorded-fixture replay (`fixtures/recorded/crm-session.json`; re-record with `RECORD_FIXTURES=1`). `pnpm conformance` runs the official `@modelcontextprotocol/conformance` server suite against the proxy with a sample server behind it (tools, resources, prompts, completions, logging, progress, sampling and elicitation are relayed).
 
 ## Limits (honest)
 
@@ -203,4 +253,4 @@ node dist/cli.js report && node dist/cli.js diff && node dist/cli.js verify
 
 - [`@agentwares/agentguard-sdk`](https://github.com/agentwares/agentguard/tree/main/packages/agentguard-sdk#readme) — the same engine for OpenAI Agents SDK / LangChain / plain functions, plus the guarded `fetch` for LLM spend.
 - [`@agentwares/agentguard-core`](https://github.com/agentwares/agentguard/tree/main/packages/agentguard-core#readme) — the Web-standard policy engine (bring your own stores).
-- [permission-diff GitHub Action](https://github.com/agentwares/agentguard/tree/main/assets/permission-diff-action) — comments on PRs that widen `agentguard.yaml`, `.claude/settings.json` or `mcp.json`.
+- [permission-diff GitHub Action](https://github.com/agentwares/agentguard/tree/main/permission-diff) — comments on PRs that widen `agentguard.yaml`, `.claude/settings.json` or `mcp.json`.

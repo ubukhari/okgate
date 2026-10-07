@@ -7,7 +7,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -106,6 +106,57 @@ describe("proxy over stdio (spawned)", () => {
     );
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name)).toContain("crm_delete_contact");
+  });
+
+  it("with no policy file anywhere, still serves MCP: its own read-only tools, nothing written", async () => {
+    // What an install button, a registry install or Glama's build starts: no agentguard.yaml in
+    // the directory the client spawns it in, and no AGENTGUARD_CONFIG.
+    const dir = mkdtempSync(join(tmpdir(), "agentguard-noconfig-"));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+    const env = { ...(process.env as Record<string, string>) };
+    delete env.AGENTGUARD_CONFIG;
+    const client = new Client({ name: "e2e-noconfig", version: "0" });
+    cleanups.push(() => client.close());
+    await client.connect(
+      new StdioClientTransport({
+        command: process.execPath,
+        args: ["--import", tsxLoader, cli, "proxy"],
+        cwd: dir,
+        env,
+        stderr: "pipe",
+      }),
+    );
+    expect(client.getServerVersion()?.name).toBe("agentguard");
+    expect(client.getInstructions()).toContain("npx -y @agentwares/agentguard init");
+    const { tools } = await client.listTools();
+    expect(tools.map((t) => t.name)).toEqual([
+      "agentguard_get_status",
+      "agentguard_get_report",
+      "agentguard_verify_audit_log",
+    ]);
+    const status = (await client.callTool({
+      name: "agentguard_get_status",
+      arguments: {},
+    })) as CallToolResult;
+    expect(status.isError).toBeFalsy();
+    expect(status.structuredContent).toMatchObject({ configured: false, upstreams: [] });
+    await client.close();
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it("a policy file that was named and is missing is still an error", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agentguard-missing-"));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+    const child = spawn(
+      process.execPath,
+      ["--import", tsxLoader, cli, "proxy", "--config", join(dir, "nope.yaml")],
+      { stdio: ["pipe", "pipe", "pipe"], cwd: dir },
+    );
+    const stderr: string[] = [];
+    child.stderr?.on("data", (d: Buffer) => stderr.push(d.toString()));
+    const exitCode = await new Promise<number | null>((resolve) => child.on("exit", resolve));
+    expect(exitCode).toBe(1);
+    expect(stderr.join("")).toContain("INVALID_POLICY");
   });
 });
 
