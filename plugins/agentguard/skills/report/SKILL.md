@@ -2,11 +2,6 @@
 name: report
 description: Explain agentguard's report of the last agent run - what dry-run mode faked (records it would have created, updated or deleted, messages sent, dollars spent), what actually ran, and every call agentguard halted - and whether the policy is ready for enforce mode. Use after an agent has run behind agentguard, or when the user asks what an agent did or would have done.
 argument-hint: "[--run <run id> | --all]"
-allowed-tools:
-  - Bash(npx -y @agentwares/agentguard@latest report *)
-  - Bash(npx -y @agentwares/agentguard@latest diff *)
-  - Bash(npx -y @agentwares/agentguard@latest verify *)
-  - Bash(npx -y @agentwares/agentguard@latest status *)
 ---
 
 # Explain the last agentguard run

@@ -95,12 +95,32 @@ describe.skipIf(!existsSync(here(root)))("repo-root files (distribution/root)", 
     expect(audit).toContain(`npx -y ${pkg.name}@latest audit --json`);
     expect(audit).toContain("Do not run `--enforce` unless the user asks");
 
+    // Claude's plugin directory holds any skill that pre-approves shell commands ("Pre-approves
+    // broad shell access in allowed-tools", 8 Oct 2026), even npx-specific ones: Claude Code asks.
+    for (const skill of skills) {
+      const front = YAML.parse(
+        read(`${root}/plugins/agentguard/skills/${skill}/SKILL.md`).split("---")[1]!,
+      ) as Record<string, unknown>;
+      expect(front["allowed-tools"], `${skill} pre-approves tools`).toBeUndefined();
+    }
+
     for (const command of ["audit", "hooks", "init", "report"]) {
       const toml = read(`${root}/commands/agentguard/${command}.toml`);
       expect(toml).toMatch(/^description = ".+"$/m);
       expect(toml).toMatch(/^prompt = """\n[\s\S]+\n"""\n$/m);
       expect(toml).toContain(`npx -y ${pkg.name}@latest ${command}`);
     }
+  });
+
+  it("the plugin has the directory's icon: a square PNG, 512-2048 px, under 2 MB", () => {
+    const png = readFileSync(here(`${root}/plugins/agentguard/.claude-plugin/icon.png`));
+    expect(png.subarray(1, 4).toString("latin1")).toBe("PNG");
+    const width = png.readUInt32BE(16);
+    const height = png.readUInt32BE(20);
+    expect(width).toBe(height);
+    expect(width).toBeGreaterThanOrEqual(512);
+    expect(width).toBeLessThanOrEqual(2048);
+    expect(png.length).toBeLessThan(2 * 1024 * 1024);
   });
 
   it("the Docker demo policy parses and points at the CRM fixture this package builds", () => {

@@ -2,10 +2,6 @@
 name: audit
 description: Check which rules in this repo's CLAUDE.md, AGENTS.md, GEMINI.md and .cursor/rules the coding agents actually broke, from this machine's own Claude Code and Codex sessions - per rule, sessions broken out of sessions checked and when - then judge the rules no script can check. Runs `npx @agentwares/agentguard audit --json` locally; nothing is sent anywhere. Use when the user asks whether agents follow CLAUDE.md, which rules get ignored, or before tightening the rules.
 argument-hint: "[--since 7d|30d|all] [--client claude|codex|all]"
-allowed-tools:
-  - Bash(npx -y @agentwares/agentguard@latest audit *)
-  - Bash(git log *)
-  - Bash(git show *)
 ---
 
 # Which written rules did the agents break?

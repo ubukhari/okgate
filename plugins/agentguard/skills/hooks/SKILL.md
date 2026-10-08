@@ -3,8 +3,6 @@ name: hooks
 description: Install, check or remove agentguard hook mode, which checks this coding agent's own shell commands and file edits against agentguard.yaml before they run and lets irreversible commands (push, merge, publish, send, rm outside the repo) run only on a turn a person typed. Runs `npx @agentwares/agentguard hooks status|install|uninstall`; dry-run first, nothing blocked until the user switches to enforce.
 argument-hint: "[status | install [--client claude|codex|gemini|all] [--user] | uninstall]"
 disable-model-invocation: true
-allowed-tools:
-  - Bash(npx -y @agentwares/agentguard@latest hooks status*)
 ---
 
 # agentguard hook mode
