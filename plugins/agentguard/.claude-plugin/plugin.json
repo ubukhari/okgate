@@ -9,7 +9,7 @@
   "homepage": "https://agentwares-agentguard.vercel.app",
   "documentationUrl": "https://github.com/agentwares/agentguard#readme",
   "repository": "https://github.com/agentwares/agentguard",
-  "privacyPolicyUrl": "https://agentwares-agentguard.vercel.app/privacy",
+  "privacyPolicyUrl": "https://github.com/agentwares/agentguard/blob/main/apps/agentguard-cli/PRIVACY.md",
   "termsOfServiceUrl": "https://agentwares-agentguard.vercel.app/terms",
   "supportUrl": "https://agentwares.vercel.app/contact",
   "license": "MIT",
