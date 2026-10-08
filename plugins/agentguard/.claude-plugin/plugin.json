@@ -6,8 +6,12 @@
     "name": "agentwares",
     "url": "https://github.com/agentwares"
   },
-  "homepage": "https://github.com/agentwares/agentguard#readme",
+  "homepage": "https://agentwares-agentguard.vercel.app",
+  "documentationUrl": "https://github.com/agentwares/agentguard#readme",
   "repository": "https://github.com/agentwares/agentguard",
+  "privacyPolicyUrl": "https://agentwares-agentguard.vercel.app/privacy",
+  "termsOfServiceUrl": "https://agentwares-agentguard.vercel.app/terms",
+  "supportUrl": "https://agentwares.vercel.app/contact",
   "license": "MIT",
   "keywords": [
     "mcp",
