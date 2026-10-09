@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -86,9 +86,9 @@ describe("createGuard + wrap", () => {
   });
 
   it("file-backed: shares state, audit and kill file with the CLI", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "agentguard-sdk-"));
+    const dir = mkdtempSync(join(tmpdir(), "okgate-sdk-"));
     dirs.push(dir);
-    const policyPath = join(dir, "agentguard.yaml");
+    const policyPath = join(dir, "okgate.yaml");
     writeFileSync(
       policyPath,
       "mode: enforce\ncaps:\n  per_run: { writes: 1 }\nagents:\n  - name: bot\n    deny: [crm_delete_*]\n",
@@ -105,12 +105,12 @@ describe("createGuard + wrap", () => {
       onBlock: "return",
     });
     expect(await del({ id: "1" })).toMatchObject({ code: "TOOL_DENIED" });
-    const entries = readAuditFile(join(dir, ".agentguard", "audit.jsonl"));
+    const entries = readAuditFile(join(dir, ".okgate", "audit.jsonl"));
     expect(entries.map((e) => e.outcome)).toEqual(["ok", "blocked", "blocked"]);
     expect(entries[0]?.agent).toBe("bot");
-    expect((await verifyAuditFile(join(dir, ".agentguard", "audit.jsonl"))).ok).toBe(true);
+    expect((await verifyAuditFile(join(dir, ".okgate", "audit.jsonl"))).ok).toBe(true);
     await ag.halt("sdk kill");
-    expect(existsSync(join(dir, ".agentguard", "KILL"))).toBe(true);
+    expect(existsSync(join(dir, ".okgate", "KILL"))).toBe(true);
     const again = await createGuard({ policy: policyPath, runId: "r2", env: {} });
     expect(
       await again.wrap(async () => 1, { name: "crm_get_x", onBlock: "return" })({}),
@@ -118,6 +118,23 @@ describe("createGuard + wrap", () => {
     await expect(createGuard({ policy: policyPath, agent: "nope", env: {} })).rejects.toMatchObject(
       { code: "INVALID_POLICY" },
     );
+  });
+
+  it("before the rename: agentguard.yaml keeps .agentguard/, and AGENTGUARD_KILL still halts", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "okgate-sdk-legacy-"));
+    dirs.push(dir);
+    mkdirSync(join(dir, ".agentguard"));
+    const policyPath = join(dir, "agentguard.yaml");
+    writeFileSync(policyPath, "mode: enforce\n");
+    const ag = await createGuard({ policy: policyPath, runId: "r1", env: {} });
+    expect(await ag.wrap(async () => 1, { name: "crm_get_x" })({})).toBe(1);
+    expect(readAuditFile(join(dir, ".agentguard", "audit.jsonl"))).toHaveLength(1);
+    expect(existsSync(join(dir, ".okgate"))).toBe(false);
+
+    const killed = await createGuard({ policy: policyPath, env: { AGENTGUARD_KILL: "1" } });
+    expect(
+      await killed.wrap(async () => 1, { name: "crm_get_x", onBlock: "return" })({}),
+    ).toMatchObject({ code: "KILLED" });
   });
 });
 

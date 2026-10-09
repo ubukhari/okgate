@@ -97,7 +97,7 @@ async function runScenario(
   const [uc, us] = InMemoryTransport.createLinkedPair();
   await replay.connect(us);
   const upstream = new Client(
-    { name: "agentguard", version: "0" },
+    { name: "okgate", version: "0" },
     { capabilities: { sampling: {}, elicitation: {} } },
   );
   await upstream.connect(uc);
@@ -130,7 +130,7 @@ async function runScenario(
 }
 
 describe("recorded-fixture replay", () => {
-  it("agentguard's decisions over the frozen CRM recording match the fixture", async () => {
+  it("okgate's decisions over the frozen CRM recording match the fixture", async () => {
     let recording: Recording;
     if (RECORD || !existsSync(fixturePath)) {
       recording = await record();

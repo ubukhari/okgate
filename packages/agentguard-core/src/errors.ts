@@ -14,6 +14,8 @@ export const GUARD_ERROR_CODES = [
   "UNKNOWN_TOOL",
   "UPSTREAM_ERROR",
   "INVALID_POLICY",
+  /** an old (okgate_*) tool name after its window; see names.ts */
+  "TOOL_RENAMED",
   "INTERNAL",
 ] as const;
 

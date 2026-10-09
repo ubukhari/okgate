@@ -1,7 +1,7 @@
 /**
  * Destructive-action gating. A matching call creates a pending approval bound to
  * (tool, args hash); the agent gets `APPROVAL_REQUIRED` with the id; a human runs
- * `agentguard approve <id>` (or clicks the link in Slack); the agent retries the identical call
+ * `okgate approve <id>` (or clicks the link in Slack); the agent retries the identical call
  * and it goes through once.
  */
 

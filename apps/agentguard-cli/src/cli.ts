@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * `agentguard` — MCP policy proxy: hard spend limits, destructive-action gating with approvals,
+ * `okgate` — MCP policy proxy: hard spend limits, destructive-action gating with approvals,
  * a kill switch, scoped credentials, dry-run writes, a loop breaker, blast-radius caps and a
  * hash-chained audit log. No LLM calls, no phone-home, no account.
  */
 import { parseArgs, type ParsedArgs } from "./args.js";
 import { version } from "./version.js";
+import { INSTALL } from "./install.js";
 
 export { version };
 import { defaultIo, describeError, type Io } from "./context.js";
@@ -17,7 +18,7 @@ import { keyCommand } from "./commands/keys.js";
 import { permissionDiffCommand } from "./commands/permission-diff.js";
 import { diffCommand, reportCommand, statusCommand, verifyCommand } from "./commands/report.js";
 
-// The MCP SDK costs ~110 ms to load. `agentguard hook pre-tool-use` runs before every guarded
+// The MCP SDK costs ~110 ms to load. `okgate hook pre-tool-use` runs before every guarded
 // tool call of a coding agent and never needs it, so the commands that do load it on demand.
 const proxyCommand = async (args: ParsedArgs, io: Io): Promise<number> =>
   (await import("./commands/proxy.js")).proxyCommand(args, io);
@@ -28,37 +29,39 @@ const toolsCommand = async (args: ParsedArgs, io: Io): Promise<number> =>
 const auditCommand = async (args: ParsedArgs, io: Io): Promise<number> =>
   (await import("./commands/audit.js")).auditCommand(args, io);
 
-export const HELP = `agentguard — MCP policy proxy for agents that touch production
+export const HELP = `okgate — MCP policy proxy for agents that touch production
 
-  npx @agentwares/agentguard init                 read your MCP config, write agentguard.yaml (dry-run), route every server through the proxy
-  agentguard report [--run id|--all]  what this run did / would have destroyed / spent, where it was halted
-  agentguard diff [--run id]          record-by-record mutation diff from a dry run
-  agentguard verify [audit.jsonl]     prove the hash-chained audit log was not edited
-  agentguard connect <key> [--write]  point this machine at your hosted proxy (paid tiers)
+  ${INSTALL} init
+                                      read your MCP config, write okgate.yaml (dry-run), route every server through the proxy
+  okgate report [--run id|--all]      what this run did / would have destroyed / spent, where it was halted
+  okgate diff [--run id]              record-by-record mutation diff from a dry run
+  okgate verify [audit.jsonl]         prove the hash-chained audit log was not edited
+  okgate connect <key> [--write]      point this machine at your hosted proxy (paid tiers)
 
-  agentguard hooks install [--project|--user] [--client claude|codex|gemini|all]
-                                      check a coding agent's own shell commands and file edits against agentguard.yaml (dry-run first);
+  okgate hooks install [--project|--user] [--client claude|codex|gemini|all]
+                                      check a coding agent's own shell commands and file edits against okgate.yaml (dry-run first);
                                       irreversible commands (push, merge, publish, send, rm outside the repo) only on a turn a person typed
-  agentguard hooks uninstall | status
-  agentguard hook pre-tool-use        what the installed hook runs (reads the harness's JSON on stdin)
+  okgate hooks uninstall | status
+  okgate hook pre-tool-use            what the installed hook runs (reads the harness's JSON on stdin)
 
-  agentguard audit [--since 7d|30d|all] [--client claude|codex|all] [--json]
+  okgate audit [--since 7d|30d|all] [--client claude|codex|all] [--json]
                                       which rules in CLAUDE.md / AGENTS.md / GEMINI.md / .cursor/rules your coding agents broke,
                                       from this machine's Claude Code and Codex sessions in this repo (nothing is sent anywhere)
-  agentguard audit --enforce [--preview]
-                                      write the checkable rules into agentguard.yaml as hook rules, in dry-run, and install the hook
+  okgate audit --enforce [--preview]
+                                      write the checkable rules into okgate.yaml as hook rules, in dry-run, and install the hook
 
-  agentguard proxy [--http --port 8788] [--agent name] [--run-id id] [--mode dry-run|enforce]
-  agentguard tools [--json]           the tools your agent will see, with class and why
-  agentguard status [--run id]        counters vs caps, kill state, pending approvals
+  okgate proxy [--http --port 8788] [--agent name] [--run-id id] [--mode dry-run|enforce]
+  okgate tools [--json]               the tools your agent will see, with class and why
+  okgate status [--run id]            counters vs caps, kill state, pending approvals
 
-  agentguard kill [reason]            halt every run now (file + running HTTP proxy);  agentguard resume
-  agentguard approvals [--all]        pending approvals;  agentguard approve <id> | deny <id> [--note text]
-  agentguard key create <agent> [--allow 'crm_get_*']... [--deny p] [--writes n] [--spend n] [--mode m]
-  agentguard key list | revoke <agent>
-  agentguard permission-diff [--base ref] [--head ref] [--paths a,b] [--format markdown|json] [--fail-on-widen]
+  okgate kill [reason]                halt every run now (file + running HTTP proxy);  okgate resume
+  okgate approvals [--all]            pending approvals;  okgate approve <id> | deny <id> [--note text]
+  okgate key create <agent> [--allow 'crm_get_*']... [--deny p] [--writes n] [--spend n] [--mode m]
+  okgate key list | revoke <agent>
+  okgate permission-diff [--base ref] [--head ref] [--paths a,b] [--format markdown|json] [--fail-on-widen]
 
-Options: --config <agentguard.yaml> (or AGENTGUARD_CONFIG), --json, --help, --version
+Options: --config <okgate.yaml> (or OKGATE_CONFIG), --json, --help, --version
+Renamed from agentguard: agentguard.yaml, .agentguard/, AGENTGUARD_* and the agentguard bin keep working.
 Docs: https://github.com/agentwares/agentguard/tree/main/apps/agentguard-cli`;
 
 export async function main(argv: readonly string[], io: Io = defaultIo()): Promise<number> {
@@ -132,8 +135,14 @@ export async function main(argv: readonly string[], io: Io = defaultIo()): Promi
   }
 }
 
+// `okgate`, and `agentguard` (its name before the rename) for 90 days. A package that runs this
+// CLI by importing it (the @agentwares/agentguard shim) sets the flag and calls main() itself.
+const embedded =
+  (globalThis as Record<symbol, unknown>)[Symbol.for("okgate.cli.embedded")] === true;
 const isMain =
-  process.argv[1] !== undefined && /(^|\/)(cli\.[cm]?[jt]s|agentguard)$/.test(process.argv[1]);
+  !embedded &&
+  process.argv[1] !== undefined &&
+  /(^|[\\/])(cli\.[cm]?[jt]s|okgate|agentguard)$/.test(process.argv[1]);
 if (isMain) {
   main(process.argv.slice(2)).then(
     (code) => {

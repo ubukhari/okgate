@@ -1,24 +1,26 @@
-# /agentguard:hooks — install, check or remove agentguard hook mode.
-description = "Install, check or remove agentguard hook mode: one rulebook for the agent's own shell commands and file edits, dry-run first."
+# /agentguard:hooks — install, check or remove okgate hook mode.
+description = "Deprecated, use /okgate:hooks (agentguard is now okgate). Install, check or remove okgate hook mode: one rulebook for the agent's own shell commands and file edits, dry-run first."
 prompt = """
-agentguard hook mode checks this coding agent's own shell commands, file edits and MCP calls
-against agentguard.yaml before they run (Gemini CLI BeforeTool, Claude Code and Codex
+agentguard is now okgate: tell the user once that /okgate:hooks is the same command; /agentguard:hooks is kept until at least 2027-01-15.
+
+okgate hook mode checks this coding agent's own shell commands, file edits and MCP calls
+against okgate.yaml before they run (Gemini CLI BeforeTool, Claude Code and Codex
 PreToolUse), and lets irreversible commands (push, merge, publish, send, rm outside the repo) run
-only on a turn a person typed, or after `agentguard approve`.
+only on a turn a person typed, or after `okgate approve`.
 
 1. Run with the shell tool:
-   npx -y @agentwares/agentguard@latest hooks status
+   npx -y -p @agentwares/agentguard@latest okgate hooks status
    and tell the user, in one or two lines, where the hook is installed.
 
 2. If they asked to install: say first that it writes the client's hook settings (a backup is
-   kept), a hooks: block in agentguard.yaml in dry-run, and .agentguard/ to .gitignore. Then run
-   npx -y @agentwares/agentguard@latest hooks {{args}}
+   kept), a hooks: block in okgate.yaml in dry-run, and .okgate/ to .gitignore. Then run
+   npx -y -p @agentwares/agentguard@latest okgate hooks {{args}}
    (for Gemini CLI pass --client gemini). Only use --user if the user asked for every project on
-   this machine. To remove it: npx -y @agentwares/agentguard@latest hooks uninstall.
+   this machine. To remove it: npx -y -p @agentwares/agentguard@latest okgate hooks uninstall.
 
 3. After an install: start a new session (hooks are read at start), work as usual (dry-run logs
-   and blocks nothing), read `npx -y @agentwares/agentguard@latest report`, and set
+   and blocks nothing), read `npx -y -p @agentwares/agentguard@latest okgate report`, and set
    hooks.mode: enforce when it looks right. Gemini CLI asks to confirm a project hook once.
 
-Never set hooks.mode: enforce and never run `agentguard approve` yourself.
+Never set hooks.mode: enforce and never run `okgate approve` yourself.
 """

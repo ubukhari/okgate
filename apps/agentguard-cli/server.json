@@ -1,35 +1,35 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.agentwares/agentguard",
-  "description": "MCP policy proxy: spend caps, approvals for destructive tools, kill switch, dry-run, audit log.",
-  "version": "0.1.9",
+  "name": "io.github.agentwares/okgate",
+  "description": "Nothing irreversible without an OK: MCP policy proxy with spend caps, approvals, kill switch.",
+  "version": "0.1.10",
   "repository": {
     "url": "https://github.com/agentwares/agentguard",
     "source": "github",
     "subfolder": "apps/agentguard-cli"
   },
-  "title": "agentguard",
+  "title": "okgate",
   "websiteUrl": "https://github.com/agentwares/agentguard/tree/main/apps/agentguard-cli",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@agentwares/agentguard",
-      "version": "0.1.9",
+      "version": "0.1.10",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
       },
       "environmentVariables": [
         {
-          "name": "AGENTGUARD_CONFIG",
-          "description": "Path to agentguard.yaml (default ./agentguard.yaml). If unset and that file does not exist, agentguard serves only its own read-only tools: agentguard_get_status, agentguard_get_report, agentguard_verify_audit_log",
+          "name": "OKGATE_CONFIG",
+          "description": "Path to okgate.yaml (default ./okgate.yaml, else ./agentguard.yaml; AGENTGUARD_CONFIG also works). With neither file, okgate serves only its own read-only tools: okgate_get_status, okgate_get_report, okgate_verify_audit_log",
           "isRequired": false,
           "format": "filepath"
         },
         {
-          "name": "AGENTGUARD_KILL",
-          "description": "Set to 1 to halt every tool call (kill switch)",
+          "name": "OKGATE_KILL",
+          "description": "Set to 1 to halt every tool call (kill switch); AGENTGUARD_KILL=1 does the same",
           "isRequired": false
         }
       ]

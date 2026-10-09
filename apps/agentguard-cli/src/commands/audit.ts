@@ -1,21 +1,22 @@
 /**
- * `agentguard audit [--since 7d|30d|all|YYYY-MM-DD] [--client claude|codex|all] [--json]
+ * `okgate audit [--since 7d|30d|all|YYYY-MM-DD] [--client claude|codex|all] [--json]
  *  [--enforce [--preview] [--yes]]`
  *
  * Which written rules the coding agents broke in this repository: the rules come from the repo's
- * CLAUDE.md, AGENTS.md, GEMINI.md, .cursor/rules (and agentguard.yaml `audit.rules`); the
+ * CLAUDE.md, AGENTS.md, GEMINI.md, .cursor/rules (and okgate.yaml `audit.rules`); the
  * sessions are this machine's Claude Code and Codex transcripts whose working directory is in the
  * repo. Per rule: sessions checked, sessions broken, the last three dates — and on screen only,
  * the command or path that broke it. No network, no telemetry, no LLM: nothing leaves the
- * machine. `--json` (what `/agentguard:audit` reads) carries counts, rule ids and dates, never a
+ * machine. `--json` (what `/okgate:audit` reads) carries counts, rule ids and dates, never a
  * command, a path or a prompt from a transcript.
  *
- * `--enforce` writes the checkable rules into agentguard.yaml as hook-mode rules — in dry-run;
+ * `--enforce` writes the checkable rules into okgate.yaml as hook-mode rules — in dry-run;
  * it never switches `hooks.mode` to enforce — shows the diff, and installs the hook if it is not.
  */
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
+import { findPolicyFile } from "@agentwares/agentguard-core/node";
 import {
   NOT_CHECKABLE_HINT,
   applicableNoun,
@@ -33,6 +34,8 @@ import {
   type Rule,
   type RuleCheck,
   type RuleSummary,
+  STATE_DIR,
+  envTwin,
 } from "@agentwares/agentguard-core";
 import { flagBool, flagList, flagString, parseArgs, type ParsedArgs } from "../args.js";
 import { homeFrom, type Io } from "../context.js";
@@ -147,15 +150,14 @@ export async function auditCommand(args: ParsedArgs, io: Io): Promise<number> {
   const clients = clientsFrom(args);
   const home = homeFrom(io);
   const repo = findRepo(resolve(io.cwd, flagString(args, "repo") ?? "."));
-  const policyPath = resolve(
-    repo.checkout,
-    flagString(args, "config") ?? io.env.AGENTGUARD_CONFIG ?? "agentguard.yaml",
-  );
+  const named = flagString(args, "config") ?? envTwin(io.env, "CONFIG");
+  const policyPath =
+    named !== undefined ? resolve(repo.checkout, named) : findPolicyFile(repo.checkout);
 
   // the rules
   const files = readRuleFiles(repo.checkout, flagList(args, "rules"));
   const config = readConfigRules(policyPath);
-  const { rules, errors } = extractRules(files, config.rules, "agentguard.yaml");
+  const { rules, errors } = extractRules(files, config.rules, basename(policyPath));
   const warnings = [
     ...(config.warning ? [config.warning] : []),
     ...errors.map((e) => `${e.file}:${e.line}: ${e.message}`),
@@ -177,7 +179,7 @@ export async function auditCommand(args: ParsedArgs, io: Io): Promise<number> {
     ...(clients.includes("codex") ? codexGroups(dirs.codex) : []),
   ];
   const cache = new AuditCache(
-    resolve(io.cwd, flagString(args, "cache-dir") ?? join(home, ".agentguard")),
+    resolve(io.cwd, flagString(args, "cache-dir") ?? join(home, STATE_DIR)),
     sha(repo.root),
     flagBool(args, "cache") !== false,
   );
@@ -254,7 +256,7 @@ export async function auditCommand(args: ParsedArgs, io: Io): Promise<number> {
     io.out(
       JSON.stringify(
         {
-          tool: "agentguard audit",
+          tool: "okgate audit",
           version: version(),
           repo: repo.root,
           checkout: repo.checkout,
@@ -298,9 +300,9 @@ export async function auditCommand(args: ParsedArgs, io: Io): Promise<number> {
           },
           warnings,
           enforce: {
-            command: "agentguard audit --enforce",
+            command: "okgate audit --enforce",
             rules: enforceable.size,
-            note: "writes hook-mode rules into agentguard.yaml in dry-run; nothing is blocked until hooks.mode is enforce",
+            note: "writes hook-mode rules into okgate.yaml in dry-run; nothing is blocked until hooks.mode is enforce",
           },
           team_history: { available: false, url: TEAM_HISTORY_URL },
           privacy:
@@ -378,7 +380,7 @@ function ruleHead(r: RuleSummary): string {
 function renderHuman(io: Io, v: View): void {
   const s = v.summary;
   const window = v.since === undefined ? "all history" : `since ${localDay(v.since)}`;
-  io.out(`agentguard audit — ${v.root} · ${window}`);
+  io.out(`okgate audit — ${v.root} · ${window}`);
   const read = v.clients.map((c) => {
     const n = v.counts[c];
     const parts = [`${n.read} read`, `${n.cached} from cache`];
@@ -402,7 +404,7 @@ function renderHuman(io: Io, v: View): void {
 
   if (v.files.length === 0 && s.rules.length === 0) {
     io.out(
-      "No rule files here (CLAUDE.md, AGENTS.md, GEMINI.md, .cursor/rules, …) and no audit.rules in agentguard.yaml: nothing to audit.",
+      "No rule files here (CLAUDE.md, AGENTS.md, GEMINI.md, .cursor/rules, …) and no audit.rules in okgate.yaml: nothing to audit.",
     );
     io.out("");
     io.out(TEAM_HISTORY_LINE);
@@ -489,7 +491,7 @@ function renderHuman(io: Io, v: View): void {
   io.out("");
   if (v.enforceable > 0)
     io.out(
-      `Enforce: agentguard audit --enforce   writes ${plural(v.enforceable, "rule")} into agentguard.yaml as hook rules, in dry-run (nothing is blocked until hooks.mode: enforce)`,
+      `Enforce: okgate audit --enforce   writes ${plural(v.enforceable, "rule")} into okgate.yaml as hook rules, in dry-run (nothing is blocked until hooks.mode: enforce)`,
     );
   io.out(TEAM_HISTORY_LINE);
 }
@@ -511,7 +513,7 @@ async function enforce(
   const write = changed && !preview && !blocked;
   if (write) writeFileSync(policyPath, edit.after);
 
-  // the hook: install it (project level) if no agentguard hook is in place for Claude Code
+  // the hook: install it (project level) if no okgate hook is in place for Claude Code
   const home = homeFrom(io);
   const installed = (["project", "user"] as const).some((scope) => {
     try {
@@ -560,7 +562,7 @@ async function enforce(
   }
 
   if (!changed)
-    io.out(`agentguard.yaml already has a hook rule for every enforceable rule (${policyPath}).`);
+    io.out(`okgate.yaml already has a hook rule for every enforceable rule (${policyPath}).`);
   else {
     io.out(
       `${write ? (edit.created ? "wrote" : "updated") : "would update"} ${policyPath} — ${plural(edit.added.length, "hook rule")}:`,
@@ -579,18 +581,18 @@ async function enforce(
   io.out("");
   if (blocked && changed) {
     io.out(
-      "hooks.mode is enforce in this agentguard.yaml, so these rules would block at once. Nothing was written. Rerun with --enforce --yes to add them anyway, or set hooks.mode: dry-run first.",
+      "hooks.mode is enforce in this okgate.yaml, so these rules would block at once. Nothing was written. Rerun with --enforce --yes to add them anyway, or set hooks.mode: dry-run first.",
     );
     return 1;
   }
   if (preview) {
-    io.out("Preview only: nothing was written. Run agentguard audit --enforce to write it.");
+    io.out("Preview only: nothing was written. Run okgate audit --enforce to write it.");
     return 0;
   }
   for (const l of hookOut) io.out(l);
-  if (installed) io.out("The agentguard hook is already installed (agentguard hooks status).");
+  if (installed) io.out("The okgate hook is already installed (okgate hooks status).");
   io.out(
-    `hooks.mode is ${edit.mode}: ${edit.mode === "dry-run" ? "every decision is logged and nothing is blocked. Read agentguard report, then set hooks.mode: enforce yourself." : "the rules apply from the next session."}`,
+    `hooks.mode is ${edit.mode}: ${edit.mode === "dry-run" ? "every decision is logged and nothing is blocked. Read okgate report, then set hooks.mode: enforce yourself." : "the rules apply from the next session."}`,
   );
   return 0;
 }

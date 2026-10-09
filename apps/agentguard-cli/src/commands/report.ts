@@ -1,5 +1,5 @@
 /**
- * `agentguard report` (the incident-shaped summary), `diff` (mutation diff), `verify` (audit
+ * `okgate report` (the incident-shaped summary), `diff` (mutation diff), `verify` (audit
  * chain), `status` (counters and remaining budget).
  */
 import { resolve } from "node:path";
@@ -49,7 +49,7 @@ export async function reportCommand(args: ParsedArgs, io: Io): Promise<number> {
       ? `Audit chain: ${chain.entries} entries, verified (${loaded.auditPath}).`
       : `Audit chain BROKEN at entry ${chain.brokenAt}: ${chain.reason}`,
   );
-  if (runId && listRuns(entries).length > 1) io.out(`Other runs: agentguard report --all`);
+  if (runId && listRuns(entries).length > 1) io.out(`Other runs: okgate report --all`);
   return 0;
 }
 
@@ -77,11 +77,12 @@ export async function verifyCommand(args: ParsedArgs, io: Io): Promise<number> {
 
 export async function statusCommand(args: ParsedArgs, io: Io): Promise<number> {
   const loaded = loadPolicyFor(args, io, { allowMissingEnv: true });
-  const { guard, kill } = createFileGuard(loaded, { alerts: false, env: io.env });
+  const { guard } = createFileGuard(loaded, { alerts: false, env: io.env });
   const entries = readAuditFile(loaded.auditPath);
   const runId = flagString(args, "run") ?? latestRunId(entries) ?? "(none yet)";
   const status = await guard.status(runId);
-  const killed = kill.check();
+  // every source a guard halts on: either KILL file, OKGATE_KILL, AGENTGUARD_KILL, kill.env
+  const killed = status.killed;
   const reg = readRegistration(loaded);
   const pending = await guard.approvals.list("pending");
   if (flagBool(args, "json")) {
@@ -105,15 +106,11 @@ export async function statusCommand(args: ParsedArgs, io: Io): Promise<number> {
   io.out(
     `policy   ${loaded.path} (mode: ${loaded.policy.mode}, ${loaded.policy.upstreams.length} upstreams)`,
   );
-  io.out(
-    `kill     ${killed.killed ? `ON — ${killed.reason} (agentguard resume to clear)` : "off"}`,
-  );
-  io.out(
-    `http     ${reg ? `${reg.url} (pid ${reg.pid})` : "not running (agentguard proxy --http)"}`,
-  );
+  io.out(`kill     ${killed.killed ? `ON — ${killed.reason} (okgate resume to clear)` : "off"}`);
+  io.out(`http     ${reg ? `${reg.url} (pid ${reg.pid})` : "not running (okgate proxy --http)"}`);
   io.out(`audit    ${entries.length} entries in ${loaded.auditPath}`);
   io.out(
-    `pending  ${pending.length} approval${pending.length === 1 ? "" : "s"}${pending.length ? ` — agentguard approvals` : ""}`,
+    `pending  ${pending.length} approval${pending.length === 1 ? "" : "s"}${pending.length ? ` — okgate approvals` : ""}`,
   );
   io.out(`run      ${runId}`);
   const fmt = (scope: "per_run" | "per_day"): string =>

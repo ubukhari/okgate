@@ -7,6 +7,8 @@ import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
 import type { Upstream } from "@agentwares/agentguard-core";
+import { backupFor } from "./hooks/clients.js";
+import { PACKAGE, npxArgs } from "./install.js";
 
 export type ClientKind =
   | "claude-code-project"
@@ -159,14 +161,17 @@ export function readServers(file: ClientConfigFile): Record<string, ServerEntry>
   return servers as Record<string, ServerEntry>;
 }
 
-export const PROXY_SERVER_NAME = "agentguard";
+export const PROXY_SERVER_NAME = "okgate";
+/** The key an okgate-era `init` or `connect` wrote; replaced, never duplicated. */
+export const LEGACY_PROXY_SERVER_NAME = "agentguard";
 
-/** What `npx` is told to fetch. Must be the published package name. */
-export const PROXY_PACKAGE = "@agentwares/agentguard";
+/** What `npx` is told to fetch. Must be the published package name (see install.ts). */
+export const PROXY_PACKAGE = PACKAGE;
 
+/** The local proxy entry, as this CLI writes it now or as okgate wrote it. */
 export function isProxyEntry(entry: ServerEntry): boolean {
   return (
-    (entry.args ?? []).some((a) => a === "agentguard" || /(^|\/)agentguard(\.js)?$/.test(a)) &&
+    (entry.args ?? []).some((a) => /(^|\/)(okgate|agentguard)(@[^/]*)?(\.js)?$/.test(a)) &&
     (entry.args ?? []).includes("proxy")
   );
 }
@@ -180,12 +185,12 @@ export function serversToUpstreams(servers: Record<string, ServerEntry>): {
   const skipped: { name: string; reason: string }[] = [];
   for (const [rawName, entry] of Object.entries(servers)) {
     if (isProxyEntry(entry)) {
-      skipped.push({ name: rawName, reason: "already the agentguard proxy" });
+      skipped.push({ name: rawName, reason: "already the okgate proxy" });
       continue;
     }
     const name =
       rawName.replace(/[^a-zA-Z0-9_-]/g, "-").replace(/^[^a-zA-Z0-9]+/, "") || "upstream";
-    // `httpUrl` is Gemini CLI's Streamable HTTP field; agentguard reaches upstreams that way.
+    // `httpUrl` is Gemini CLI's Streamable HTTP field; okgate reaches upstreams that way.
     const url = typeof entry.httpUrl === "string" ? entry.httpUrl : entry.url;
     if (url) {
       upstreams.push({
@@ -215,8 +220,10 @@ export function serversToUpstreams(servers: Record<string, ServerEntry>): {
   return { upstreams, skipped };
 }
 
+/** The original's backup: an agentguard-era `.agentguard-backup` if there is one, else `.okgate-backup`. */
 export function backupPath(file: ClientConfigFile): string {
-  return `${file.path}.agentguard-backup`;
+  const { existing, next } = backupFor(file.path);
+  return existing ?? next;
 }
 
 /** The entry that replaces every server: one proxy, all upstreams behind it. */
@@ -225,11 +232,12 @@ export function proxyEntry(
   policyPath: string,
   opts: { agent?: string } = {},
 ): ServerEntry {
-  // The published name, scope and all. `npx -y agentguard` 404s — that package does not
+  // The published name, scope and all. `npx -y okgate` 404s — that package does not
   // exist — so every config this wrote failed to start the proxy, and the line printed next
   // to it already said `npx @agentwares/agentguard proxy`. Worse than broken: the unscoped
   // name is unclaimed, so anyone who took it would have their code run by our onboarding.
-  const args = ["-y", PROXY_PACKAGE, "proxy", "--config", policyPath];
+  // install.ts says which package serves the okgate bin.
+  const args = [...npxArgs({ yes: true }), "proxy", "--config", policyPath];
   if (opts.agent) args.push("--agent", opts.agent);
   const entry: ServerEntry = { command: "npx", args };
   if (file.serversKey === "servers") entry.type = "stdio";
@@ -252,7 +260,7 @@ export function rewriteClientConfig(
   return { backup, replaced };
 }
 
-/** `agentguard init --undo`: restore the backup. */
+/** `okgate init --undo`: restore the backup. */
 export function restoreClientConfig(file: ClientConfigFile): boolean {
   const backup = backupPath(file);
   if (!existsSync(backup)) return false;
@@ -272,10 +280,13 @@ export function mergeServerIntoConfig(
   file: ClientConfigFile,
   name: string,
   entry: ServerEntry,
+  /** older names of the same server, removed so it is not listed twice */
+  replaces: readonly string[] = [],
 ): { backup: string; replaced: boolean } {
   const raw = JSON.parse(readFileSync(file.path, "utf8")) as Record<string, unknown>;
-  const servers = (raw[file.serversKey] as Record<string, ServerEntry> | undefined) ?? {};
-  const replaced = name in servers;
+  const servers = { ...((raw[file.serversKey] as Record<string, ServerEntry> | undefined) ?? {}) };
+  const replaced = name in servers || replaces.some((old) => old in servers);
+  for (const old of replaces) delete servers[old];
   const backup = backupPath(file);
   if (!existsSync(backup)) copyFileSync(file.path, backup);
   raw[file.serversKey] = { ...servers, [name]: entry };

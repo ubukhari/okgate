@@ -40,9 +40,9 @@ async function harness(
   const policy = parsePolicy(policyInput);
   const loaded: LoadedPolicy = {
     policy,
-    path: "/tmp/agentguard.yaml",
+    path: "/tmp/okgate.yaml",
     baseDir: "/tmp",
-    stateDir: "/tmp/.agentguard",
+    stateDir: "/tmp/.okgate",
     auditPath: "/tmp/audit.jsonl",
     killPath: "/tmp/KILL",
   };
@@ -53,7 +53,7 @@ async function harness(
   const [upClientT, upServerT] = InMemoryTransport.createLinkedPair();
   await crmServer.connect(upServerT);
   const upstreamClient = new Client(
-    { name: "agentguard", version: "test" },
+    { name: "okgate", version: "test" },
     { capabilities: { sampling: {}, elicitation: {} } },
   );
   await upstreamClient.connect(upClientT);
@@ -99,14 +99,14 @@ const code = (r: CallToolResult): string | undefined => {
 };
 
 describe("proxy (in-memory)", () => {
-  it("lists upstream tools with agentguard metadata", async () => {
+  it("lists upstream tools with okgate metadata", async () => {
     const h = await harness({ mode: "dry-run" });
     const { tools } = await h.client.listTools();
     const names = tools.map((t) => t.name);
     expect(names).toContain("crm_delete_contact");
     expect(names).toContain("crm_list_contacts");
     const del = tools.find((t) => t.name === "crm_delete_contact")!;
-    expect(del._meta?.agentguard).toMatchObject({
+    expect(del._meta?.okgate).toMatchObject({
       upstream: "crm",
       class: "write",
       verb: "delete",
@@ -130,7 +130,7 @@ describe("proxy (in-memory)", () => {
     })) as CallToolResult;
     expect(del.isError).toBeFalsy();
     expect(del.structuredContent).toMatchObject({ deleted: true, id: "c_1" });
-    expect((del._meta as { agentguard: { dryRun: boolean } }).agentguard.dryRun).toBe(true);
+    expect((del._meta as { okgate: { dryRun: boolean } }).okgate.dryRun).toBe(true);
     expect(h.crm.contacts.has("c_1")).toBe(true);
     expect(h.crm.mutations).toHaveLength(0);
     const entries = await h.guard.audit.read();
@@ -236,7 +236,7 @@ describe("proxy (in-memory)", () => {
     };
     expect(body.code).toBe("APPROVAL_REQUIRED");
     expect(body.retryable).toBe(true);
-    expect(body.details.command).toBe(`agentguard approve ${body.details.approvalId}`);
+    expect(body.details.command).toBe(`okgate approve ${body.details.approvalId}`);
     expect(h.crm.contacts.has("c_2")).toBe(true);
     await h.guard.decide(body.details.approvalId, "approved", "test");
     const second = (await h.client.callTool({

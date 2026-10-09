@@ -1,5 +1,5 @@
 /**
- * `agentguard audit --enforce`: write the plan `planEnforcement` made into agentguard.yaml with
+ * `okgate audit --enforce`: write the plan `planEnforcement` made into okgate.yaml with
  * the `yaml` document API, so every comment and setting already there stays. Each added rule
  * carries a comment naming the rule it came from. `hooks.mode` is never touched: a new policy, or
  * a new hooks block, starts in dry-run.

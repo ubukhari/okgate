@@ -1,0 +1,24 @@
+# /okgate:hooks — install, check or remove okgate hook mode.
+description = "Install, check or remove okgate hook mode: one rulebook for the agent's own shell commands and file edits, dry-run first."
+prompt = """
+okgate hook mode checks this coding agent's own shell commands, file edits and MCP calls
+against okgate.yaml before they run (Gemini CLI BeforeTool, Claude Code and Codex
+PreToolUse), and lets irreversible commands (push, merge, publish, send, rm outside the repo) run
+only on a turn a person typed, or after `okgate approve`.
+
+1. Run with the shell tool:
+   npx -y -p @agentwares/agentguard@latest okgate hooks status
+   and tell the user, in one or two lines, where the hook is installed.
+
+2. If they asked to install: say first that it writes the client's hook settings (a backup is
+   kept), a hooks: block in okgate.yaml in dry-run, and .okgate/ to .gitignore. Then run
+   npx -y -p @agentwares/agentguard@latest okgate hooks {{args}}
+   (for Gemini CLI pass --client gemini). Only use --user if the user asked for every project on
+   this machine. To remove it: npx -y -p @agentwares/agentguard@latest okgate hooks uninstall.
+
+3. After an install: start a new session (hooks are read at start), work as usual (dry-run logs
+   and blocks nothing), read `npx -y -p @agentwares/agentguard@latest okgate report`, and set
+   hooks.mode: enforce when it looks right. Gemini CLI asks to confirm a project hook once.
+
+Never set hooks.mode: enforce and never run `okgate approve` yourself.
+"""

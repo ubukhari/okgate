@@ -1,7 +1,74 @@
 # Changelog
 
-`@agentwares/agentguard`, the CLI and MCP proxy. A tag `agentguard-v<version>` publishes the
-GitHub Release for a version with its section below as the notes.
+`okgate` (formerly agentguard), the CLI and MCP proxy, on npm as `@agentwares/agentguard` until
+`@agentwares/okgate` is published. A tag `okgate-v<version>` (before the rename, `agentguard-v<version>`)
+publishes the GitHub Release for a version with its section below as the notes.
+
+## 0.1.10 — 2026-10-08
+
+### Changed
+
+- **agentguard is now okgate.** "Nothing irreversible without an OK." The CLI calls itself
+  `okgate`, and npm serves it as a second bin of this package until `@agentwares/okgate` is
+  published: `npx -p @agentwares/agentguard okgate init`. Everything it writes from now on uses
+  the new names: `okgate.yaml`, `.okgate/`, `OKGATE_*`, the `okgate` MCP server entry, the
+  `okgate_get_status` / `okgate_get_report` / `okgate_verify_audit_log` tools, `X-Okgate-Key`,
+  and hook commands that run `npx -y -p @agentwares/agentguard@<version> okgate hook pre-tool-use`.
+- The server registers in the MCP Registry as `io.github.agentwares/okgate` (`mcpName`).
+
+### Kept working (until at least 2027-01-15)
+
+- The `agentguard` bin, and `npx @agentwares/agentguard`, which runs it.
+- `agentguard.yaml` is read when there is no `okgate.yaml`, including walking up from a coding
+  agent's working directory; creating an `okgate.yaml` beside it counts as editing the guard.
+- An existing `.agentguard/` stays the state directory when there is no `.okgate/`, so counters,
+  pending approvals and the audit log's hash chain carry on: `okgate verify` passes across the
+  rename. Both directories are the guard's own and refused to a coding agent.
+- Each `AGENTGUARD_*` variable applies when its `OKGATE_*` twin is unset. **`AGENTGUARD_KILL=1`
+  and `OKGATE_KILL=1` both halt everything, whatever `kill.env` the policy names**, and a KILL
+  file under either directory halts; `okgate kill` writes both that exist and `resume` clears both.
+- `hooks status`, `hooks uninstall` and `hooks install` recognise agentguard-era hook entries
+  (install replaces one, it never adds a second); `init` recognises the old `agentguard` MCP entry
+  and `init --undo` restores a `*.agentguard-backup`; `connect` replaces an `agentguard` entry.
+- `tools/list` shows only `okgate_*`; a `tools/call` for an `agentguard_*` name runs its twin with
+  a deprecation note in `_meta["okgate/deprecation"]` until 2027-01-15, then answers
+  `TOOL_RENAMED` (`retryable: false`, with the new name in `fix`). Tool results carry the verdict
+  under `_meta.okgate` and, for the window, `_meta.agentguard`.
+- `<!-- agentguard: … -->` inline checks, `X-Agentguard-Key`, and `_meta["agentguard/runId"]`.
+- `permission-diff` (and the GitHub Action) diffs `okgate.yaml` and `agentguard.yaml` alike.
+
+## 0.1.10 — 2026-10-08
+
+### Changed
+
+- **agentguard is now okgate.** "Nothing irreversible without an OK." The CLI calls itself
+  `okgate`, and npm serves it as a second bin of this package until `@agentwares/okgate` is
+  published: `npx -p @agentwares/agentguard okgate init`. Everything it writes from now on uses
+  the new names: `okgate.yaml`, `.okgate/`, `OKGATE_*`, the `okgate` MCP server entry, the
+  `okgate_get_status` / `okgate_get_report` / `okgate_verify_audit_log` tools, `X-Okgate-Key`,
+  and hook commands that run `npx -y -p @agentwares/agentguard@<version> okgate hook pre-tool-use`.
+- The server registers in the MCP Registry as `io.github.agentwares/okgate` (`mcpName`).
+
+### Kept working (until at least 2027-01-15)
+
+- The `agentguard` bin, and `npx @agentwares/agentguard`, which runs it.
+- `agentguard.yaml` is read when there is no `okgate.yaml`, including walking up from a coding
+  agent's working directory; creating an `okgate.yaml` beside it counts as editing the guard.
+- An existing `.agentguard/` stays the state directory when there is no `.okgate/`, so counters,
+  pending approvals and the audit log's hash chain carry on: `okgate verify` passes across the
+  rename. Both directories are the guard's own and refused to a coding agent.
+- Each `AGENTGUARD_*` variable applies when its `OKGATE_*` twin is unset. **`AGENTGUARD_KILL=1`
+  and `OKGATE_KILL=1` both halt everything, whatever `kill.env` the policy names**, and a KILL
+  file under either directory halts; `okgate kill` writes both that exist and `resume` clears both.
+- `hooks status`, `hooks uninstall` and `hooks install` recognise agentguard-era hook entries
+  (install replaces one, it never adds a second); `init` recognises the old `agentguard` MCP entry
+  and `init --undo` restores a `*.agentguard-backup`; `connect` replaces an `agentguard` entry.
+- `tools/list` shows only `okgate_*`; a `tools/call` for an `agentguard_*` name runs its twin with
+  a deprecation note in `_meta["okgate/deprecation"]` until 2027-01-15, then answers
+  `TOOL_RENAMED` (`retryable: false`, with the new name in `fix`). Tool results carry the verdict
+  under `_meta.okgate` and, for the window, `_meta.agentguard`.
+- `<!-- agentguard: … -->` inline checks, `X-Agentguard-Key`, and `_meta["agentguard/runId"]`.
+- `permission-diff` (and the GitHub Action) diffs `okgate.yaml` and `agentguard.yaml` alike.
 
 ## 0.1.9 — 2026-10-07
 

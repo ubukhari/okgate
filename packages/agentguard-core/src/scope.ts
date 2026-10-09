@@ -32,7 +32,7 @@ export async function resolveAgent(
   return { agent: undefined };
 }
 
-/** Bearer token or X-Agentguard-Key header, if any. */
+/** Bearer token, or an X-Okgate-Key (formerly X-Agentguard-Key) header, if any. */
 export function keyFromHeaders(
   headers: Headers | Record<string, string | undefined>,
 ): string | undefined {
@@ -40,7 +40,8 @@ export function keyFromHeaders(
     headers instanceof Headers
       ? (headers.get(name) ?? undefined)
       : (headers[name] ?? headers[name.toLowerCase()]);
-  const explicit = get("x-agentguard-key");
+  // X-Agentguard-Key is the header's name from before the rename to okgate
+  const explicit = get("x-okgate-key") ?? get("x-agentguard-key");
   if (explicit) return explicit.trim();
   const auth = get("authorization");
   if (auth && /^bearer\s+/i.test(auth)) {

@@ -1,5 +1,5 @@
 /**
- * agentguard with no upstream servers: its own read-only tools, as an MCP client sees them.
+ * okgate with no upstream servers: its own read-only tools, as an MCP client sees them.
  * In-process over InMemoryTransport, against temp directories, so every file the proxy reads or
  * (must not) write is checked for real.
  */
@@ -18,12 +18,13 @@ import {
 } from "@agentwares/agentguard-core/node";
 import { parseArgs } from "../args.js";
 import { unconfiguredPolicy } from "../commands/proxy.js";
+import { INIT_COMMAND } from "./own-tools.js";
 import { createFileGuard, type Io } from "../context.js";
 import { createCrmMcpServer, seedState } from "../fixtures/crm-server.js";
 import { ProxyRuntime } from "./runtime.js";
 import { createDownstreamServer } from "./server.js";
 
-const OWN = ["agentguard_get_status", "agentguard_get_report", "agentguard_verify_audit_log"];
+const OWN = ["okgate_get_status", "okgate_get_report", "okgate_verify_audit_log"];
 
 const cleanups: (() => Promise<void> | void)[] = [];
 afterEach(async () => {
@@ -31,7 +32,7 @@ afterEach(async () => {
 });
 
 function tempDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), "agentguard-own-"));
+  const dir = mkdtempSync(join(tmpdir(), "okgate-own-"));
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
 }
@@ -73,8 +74,8 @@ async function unconfigured(dir: string, env: NodeJS.ProcessEnv = {}) {
 
 /** A real policy file with no upstreams, on the file-backed guard the CLI uses. */
 function configured(dir: string, yaml = "mode: dry-run\n"): { loaded: LoadedPolicy; guard: Guard } {
-  writeFileSync(join(dir, "agentguard.yaml"), yaml);
-  const loaded = loadPolicyFile(join(dir, "agentguard.yaml"), { env: {} });
+  writeFileSync(join(dir, "okgate.yaml"), yaml);
+  const loaded = loadPolicyFile(join(dir, "okgate.yaml"), { env: {} });
   return { loaded, guard: createFileGuard(loaded, { alerts: false, env: {} }).guard };
 }
 
@@ -96,7 +97,7 @@ function schemaFindings(tool: Tool): string[] {
     properties?: Record<string, { description?: string }>;
     additionalProperties?: unknown;
   };
-  if (!/^agentguard_[a-z]+(_[a-z]+)+$/.test(tool.name)) out.push("not namespaced agentguard_*");
+  if (!/^okgate_[a-z]+(_[a-z]+)+$/.test(tool.name)) out.push("not namespaced okgate_*");
   if (!tool.description || tool.description.length < 40) out.push("description too thin");
   if (schema.additionalProperties !== false) out.push("additionalProperties is not false");
   for (const [field, spec] of Object.entries(schema.properties ?? {}))
@@ -108,37 +109,35 @@ function schemaFindings(tool: Tool): string[] {
   return out;
 }
 
-describe("no upstreams: agentguard's own tools", () => {
+describe("no upstreams: okgate's own tools", () => {
   it("lists exactly the three read-only tools, each titled, annotated and strict", async () => {
     const { client, instructions } = await unconfigured(tempDir());
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name)).toEqual(OWN);
     for (const tool of tools)
       expect({ [tool.name]: schemaFindings(tool) }).toEqual({ [tool.name]: [] });
-    expect(instructions).toContain("npx -y @agentwares/agentguard init");
+    expect(instructions).toContain(INIT_COMMAND);
   });
 
   it("with no policy file, answers every tool and writes nothing where it was started", async () => {
     const dir = tempDir();
     const { client } = await unconfigured(dir);
 
-    const status = await call(client, "agentguard_get_status");
+    const status = await call(client, "okgate_get_status");
     expect(status.isError).toBeFalsy();
     expect(status.structuredContent).toMatchObject({
       configured: false,
-      policy_path: join(dir, "agentguard.yaml"),
+      policy_path: join(dir, "okgate.yaml"),
       mode: "dry-run",
       upstreams: [],
       run_id: null,
       kill_switch: { on: false },
       pending_approvals: 0,
-      audit_log: { path: join(dir, ".agentguard", "audit.jsonl"), entries: 0 },
+      audit_log: { path: join(dir, ".okgate", "audit.jsonl"), entries: 0 },
     });
-    expect(String(status.structuredContent?.next_step)).toContain(
-      "npx -y @agentwares/agentguard init",
-    );
+    expect(String(status.structuredContent?.next_step)).toContain(INIT_COMMAND);
 
-    const report = await call(client, "agentguard_get_report");
+    const report = await call(client, "okgate_get_report");
     expect(report.isError).toBeFalsy();
     expect(report.structuredContent).toMatchObject({
       configured: false,
@@ -147,7 +146,7 @@ describe("no upstreams: agentguard's own tools", () => {
     });
     expect(String(report.structuredContent?.markdown)).toContain("No runs recorded");
 
-    const verify = await call(client, "agentguard_verify_audit_log");
+    const verify = await call(client, "okgate_verify_audit_log");
     expect(verify.structuredContent).toMatchObject({
       configured: false,
       exists: false,
@@ -161,11 +160,11 @@ describe("no upstreams: agentguard's own tools", () => {
 
   it("reports the kill switch from the environment", async () => {
     const { client } = await unconfigured(tempDir(), { AGENTGUARD_KILL: "1" });
-    const status = await call(client, "agentguard_get_status");
+    const status = await call(client, "okgate_get_status");
     expect(status.structuredContent).toMatchObject({ kill_switch: { on: true } });
   });
 
-  it("reads the runs another agentguard process recorded, and verifies the chain", async () => {
+  it("reads the runs another okgate process recorded, and verifies the chain", async () => {
     const dir = tempDir();
     const { loaded, guard } = configured(dir, "mode: dry-run\ncaps:\n  per_run: { writes: 5 }\n");
     // Another proxy on the same policy ran an agent: a read, a faked delete, a faked create.
@@ -185,7 +184,7 @@ describe("no upstreams: agentguard's own tools", () => {
     );
     expect((await client.listTools()).tools.map((t) => t.name)).toEqual(OWN);
 
-    const status = await call(client, "agentguard_get_status");
+    const status = await call(client, "okgate_get_status");
     expect(status.structuredContent).toMatchObject({
       configured: true,
       run_id: "run_a",
@@ -196,7 +195,7 @@ describe("no upstreams: agentguard's own tools", () => {
     });
     expect(String(status.structuredContent?.next_step)).toContain("upstreams:");
 
-    const report = await call(client, "agentguard_get_report");
+    const report = await call(client, "okgate_get_report");
     expect(report.structuredContent).toMatchObject({
       configured: true,
       run_id: "run_a",
@@ -207,7 +206,7 @@ describe("no upstreams: agentguard's own tools", () => {
     });
     expect(String(report.structuredContent?.markdown)).toContain("run_a");
 
-    const verify = await call(client, "agentguard_verify_audit_log");
+    const verify = await call(client, "okgate_verify_audit_log");
     expect(verify.structuredContent).toMatchObject({ exists: true, ok: true, entries: 3 });
     expect(verify.structuredContent?.head_hash).toMatch(/^[0-9a-f]{64}$/);
 
@@ -215,19 +214,19 @@ describe("no upstreams: agentguard's own tools", () => {
     const lines = readFileSync(loaded.auditPath, "utf8").trimEnd().split("\n");
     lines[1] = lines[1]!.replace("crm_delete_contact", "crm_get_contact");
     writeFileSync(loaded.auditPath, lines.join("\n") + "\n");
-    const broken = await call(client, "agentguard_verify_audit_log");
+    const broken = await call(client, "okgate_verify_audit_log");
     expect(broken.structuredContent).toMatchObject({ ok: false, broken_at: 2 });
   });
 
   it("errors carry code, cause, fix and retryable", async () => {
     const { client } = await unconfigured(tempDir());
 
-    const unknownRun = await call(client, "agentguard_get_report", { run_id: "run_nope" });
+    const unknownRun = await call(client, "okgate_get_report", { run_id: "run_nope" });
     expect(unknownRun.isError).toBe(true);
     expect(body(unknownRun)).toMatchObject({ code: "NOT_FOUND", retryable: false });
     expect(String(body(unknownRun).fix)).toContain("without run_id");
 
-    const misspelled = await call(client, "agentguard_get_status", { runid: "run_a" });
+    const misspelled = await call(client, "okgate_get_status", { runid: "run_a" });
     expect(misspelled.isError).toBe(true);
     expect(body(misspelled)).toMatchObject({ code: "INVALID_INPUT", retryable: false });
   });
@@ -237,14 +236,14 @@ describe("no upstreams: agentguard's own tools", () => {
     const crmServer = createCrmMcpServer(seedState());
     const [upClientT, upServerT] = InMemoryTransport.createLinkedPair();
     await crmServer.connect(upServerT);
-    const upstream = new Client({ name: "agentguard", version: "test" });
+    const upstream = new Client({ name: "okgate", version: "test" });
     await upstream.connect(upClientT);
     cleanups.push(() => crmServer.close());
     const loaded: LoadedPolicy = {
       policy,
-      path: "/tmp/agentguard.yaml",
+      path: "/tmp/okgate.yaml",
       baseDir: "/tmp",
-      stateDir: "/tmp/.agentguard",
+      stateDir: "/tmp/.okgate",
       auditPath: "/tmp/audit.jsonl",
       killPath: "/tmp/KILL",
     };
@@ -260,8 +259,8 @@ describe("no upstreams: agentguard's own tools", () => {
     const names = (await client.listTools()).tools.map((t) => t.name);
     expect(names).toContain("crm_delete_contact");
     for (const own of OWN) expect(names).not.toContain(own);
-    expect(instructions).toContain("Tool calls pass through agentguard");
-    const res = await call(client, "agentguard_get_status");
+    expect(instructions).toContain("Tool calls pass through okgate");
+    const res = await call(client, "okgate_get_status");
     expect(body(res)).toMatchObject({ code: "UNKNOWN_TOOL" });
   });
 });
@@ -269,14 +268,14 @@ describe("no upstreams: agentguard's own tools", () => {
 describe("unconfiguredPolicy", () => {
   it("applies only when no policy file exists and none was named", () => {
     const dir = tempDir();
-    expect(unconfiguredPolicy(parseArgs([]), ioFor(dir))?.path).toBe(join(dir, "agentguard.yaml"));
+    expect(unconfiguredPolicy(parseArgs([]), ioFor(dir))?.path).toBe(join(dir, "okgate.yaml"));
     expect(
       unconfiguredPolicy(parseArgs(["proxy", "--config", "x.yaml"]), ioFor(dir)),
     ).toBeUndefined();
     expect(
       unconfiguredPolicy(parseArgs(["proxy"]), ioFor(dir, { AGENTGUARD_CONFIG: "x.yaml" })),
     ).toBeUndefined();
-    writeFileSync(join(dir, "agentguard.yaml"), "mode: enforce\n");
+    writeFileSync(join(dir, "okgate.yaml"), "mode: enforce\n");
     expect(unconfiguredPolicy(parseArgs(["proxy"]), ioFor(dir))).toBeUndefined();
   });
 });

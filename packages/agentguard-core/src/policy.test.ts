@@ -14,8 +14,8 @@ describe("policy", () => {
     expect(p.mode).toBe("dry-run");
     expect(p.loop.max_repeats).toBe(3);
     expect(p.classify.unknown).toBe("write");
-    expect(p.kill.file).toBe(".agentguard/KILL");
-    expect(defaultPolicy().audit.path).toBe(".agentguard/audit.jsonl");
+    expect(p.kill.file).toBe(".okgate/KILL");
+    expect(defaultPolicy().audit.path).toBe(".okgate/audit.jsonl");
   });
 
   it("parses the documented example", () => {

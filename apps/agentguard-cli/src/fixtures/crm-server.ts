@@ -203,7 +203,7 @@ export function createCrmMcpServer(state: CrmState = seedState()): McpServer {
   return createMcpServer({
     name: "fake-crm",
     version: "0.1.0",
-    instructions: "A fake CRM for agentguard tests. Nothing here is real.",
+    instructions: "A fake CRM for okgate tests. Nothing here is real.",
     tools: crmTools(state),
   });
 }

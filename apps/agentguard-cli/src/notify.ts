@@ -18,7 +18,7 @@ export function approvalSlackMessage(
 ): { text: string; blocks: unknown[] } {
   const a = event.approval!;
   const argsText = JSON.stringify(a.args ?? {}, null, 2).slice(0, 1500);
-  const text = `[agentguard] approval needed: ${a.tool} (run ${a.run_id}) — run \`agentguard approve ${a.id}\`${url ? ` or open ${url}` : ""}`;
+  const text = `[okgate] approval needed: ${a.tool} (run ${a.run_id}) — run \`okgate approve ${a.id}\`${url ? ` or open ${url}` : ""}`;
   const blocks: unknown[] = [
     { type: "header", text: { type: "plain_text", text: `Approval needed: ${a.tool}` } },
     {
@@ -33,7 +33,7 @@ export function approvalSlackMessage(
       elements: [
         {
           type: "mrkdwn",
-          text: `Approve: \`agentguard approve ${a.id}\` · Deny: \`agentguard deny ${a.id}\` · expires ${a.expires_at}`,
+          text: `Approve: \`okgate approve ${a.id}\` · Deny: \`okgate deny ${a.id}\` · expires ${a.expires_at}`,
         },
       ],
     },
@@ -57,7 +57,7 @@ export function approvalSlackMessage(
 
 export function haltSlackMessage(event: GuardEvent): { text: string; blocks: unknown[] } {
   const cause = event.error?.cause ?? "";
-  const text = `[agentguard] ${event.type}: ${event.tool} (run ${event.runId}) — ${cause}`;
+  const text = `[okgate] ${event.type}: ${event.tool} (run ${event.runId}) — ${cause}`;
   return {
     text,
     blocks: [
@@ -73,7 +73,7 @@ export function haltSlackMessage(event: GuardEvent): { text: string; blocks: unk
         elements: [
           {
             type: "mrkdwn",
-            text: `\`agentguard report --run ${event.runId}\` for the full picture${event.type === "KILLED" ? "" : " · `agentguard kill` to stop everything"}`,
+            text: `\`okgate report --run ${event.runId}\` for the full picture${event.type === "KILLED" ? "" : " · `okgate kill` to stop everything"}`,
           },
         ],
       },
@@ -116,7 +116,7 @@ export function createAlerter(opts: AlerterOptions): (event: GuardEvent) => Prom
           webhook,
           {
             event: event.type,
-            product: "agentguard",
+            product: "okgate",
             subject: message.text,
             summary: event.error?.cause ?? "",
             occurredAt: event.at,

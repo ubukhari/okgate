@@ -1,0 +1,48 @@
+{
+  "name": "@agentwares/agentguard-core",
+  "version": "0.2.0",
+  "description": "agentguard is now okgate: this package re-exports @agentwares/okgate-core so code that imports the old name keeps working. Depend on @agentwares/okgate-core instead.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    },
+    "./node": {
+      "types": "./node.d.ts",
+      "import": "./node.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "node.js",
+    "node.d.ts",
+    "notice.js",
+    "README.md"
+  ],
+  "dependencies": {
+    "@agentwares/okgate-core": "^0.2.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agentwares/agentguard.git",
+    "directory": "packages/agentguard-core/shim"
+  },
+  "homepage": "https://www.npmjs.com/package/@agentwares/okgate-core",
+  "keywords": [
+    "agentguard",
+    "okgate",
+    "deprecated"
+  ],
+  "sideEffects": true,
+  "engines": {
+    "node": ">=20"
+  }
+}

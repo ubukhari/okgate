@@ -2,9 +2,9 @@
 /**
  * A scripted "agent" that misbehaves on purpose: reads, then writes, then loops, then bursts
  * writes past the cap. Run it against the proxy to see dry-run diffs, LOOP_DETECTED and
- * CAP_EXCEEDED in `agentguard report`.
+ * CAP_EXCEEDED in `okgate report`.
  *
- *   node dist/fixtures/demo-agent.js --config agentguard.yaml   # spawns `agentguard proxy` over stdio
+ *   node dist/fixtures/demo-agent.js --config okgate.yaml   # spawns `okgate proxy` over stdio
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -38,7 +38,7 @@ function summarize(result: CallToolResult): {
   text?: string;
 } {
   const text = result.content.find((c) => c.type === "text")?.text;
-  const meta = (result._meta as { agentguard?: { dryRun?: boolean } } | undefined)?.agentguard;
+  const meta = (result._meta as { okgate?: { dryRun?: boolean } } | undefined)?.okgate;
   if (result.isError) {
     let code: string | undefined;
     try {
@@ -121,8 +121,8 @@ if (isMain) {
     return i >= 0 ? argv[i + 1] : undefined;
   };
   const url = arg("--url");
-  const config = arg("--config") ?? "agentguard.yaml";
-  const client = new Client({ name: "agentguard-demo-agent", version: "0.1.0" });
+  const config = arg("--config") ?? "okgate.yaml";
+  const client = new Client({ name: "okgate-demo-agent", version: "0.1.0" });
   if (url) {
     await client.connect(
       new StreamableHTTPClientTransport(new URL(url), {
@@ -148,7 +148,7 @@ if (isMain) {
     });
     const halts = steps.filter((s) => !s.ok).map((s) => s.code);
     console.log(
-      `\n${steps.length} calls; halts: ${halts.join(", ") || "none"}. Now run: agentguard report`,
+      `\n${steps.length} calls; halts: ${halts.join(", ") || "none"}. Now run: okgate report`,
     );
   } finally {
     await client.close();

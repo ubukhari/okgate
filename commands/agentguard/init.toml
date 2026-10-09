@@ -1,18 +1,20 @@
-# /agentguard:init — put agentguard in front of this project's MCP servers, in dry-run mode.
-description = "Put agentguard in front of this project's MCP servers in dry-run mode (writes agentguard.yaml, rewrites the MCP config with a backup)."
+# /agentguard:init — put okgate in front of this project's MCP servers, in dry-run mode.
+description = "Deprecated, use /okgate:init (agentguard is now okgate). Put okgate in front of this project's MCP servers in dry-run mode (writes okgate.yaml, rewrites the MCP config with a backup)."
 prompt = """
-Set up agentguard in this project. agentguard is an open-source MCP policy proxy
+agentguard is now okgate: tell the user once that /okgate:init is the same command; /agentguard:init is kept until at least 2027-01-15.
+
+Set up okgate in this project. okgate is an open-source MCP policy proxy
 (`@agentwares/agentguard` on npm, MIT): it sits between the agent and its MCP servers and enforces
-one file, agentguard.yaml (dry-run writes, spend caps, approvals for destructive tools, a loop
+one file, okgate.yaml (dry-run writes, spend caps, approvals for destructive tools, a loop
 breaker, a kill switch, a hash-chained audit log). It runs on this machine, needs no account and
 makes no LLM calls.
 
 1. Before running anything, tell the user in two or three sentences what `init` changes:
-   - it writes agentguard.yaml in the current directory in dry-run mode (reads pass through;
+   - it writes okgate.yaml in the current directory in dry-run mode (reads pass through;
      writes and spends are faked and recorded; nothing destructive runs upstream);
-   - it backs up one MCP config to `*.agentguard-backup` and replaces its servers with a single
-     entry that starts `npx -y @agentwares/agentguard proxy`;
-   - `npx -y @agentwares/agentguard init --undo` restores the backup.
+   - it backs up one MCP config to `*.okgate-backup` and replaces its servers with a single
+     entry that starts `npx -y -p @agentwares/agentguard okgate proxy`;
+   - `npx -y -p @agentwares/agentguard okgate init --undo` restores the backup.
 
 2. Choose the config. Gemini CLI reads MCP servers from `.gemini/settings.json` in the project
    and from `~/.gemini/settings.json`. If `.gemini/settings.json` exists here and has an
@@ -23,16 +25,16 @@ makes no LLM calls.
    .vscode/mcp.json, mcp.json, .gemini/settings.json).
 
 3. Run, from the project root, with the shell tool (the user confirms the command):
-   npx -y @agentwares/agentguard@latest init [--client <path>] {{args}}
+   npx -y -p @agentwares/agentguard@latest okgate init [--client <path>] {{args}}
 
-4. Read the result back: open the agentguard.yaml it wrote and summarise the mode, each upstream
+4. Read the result back: open the okgate.yaml it wrote and summarise the mode, each upstream
    and its tool count, the tools under `approval.tools` (they will need a human), tools under
    `classify.write` that could not be classified, and `caps.per_run`. Quote any "could not
    connect" line. An upstream that Gemini reached over SSE (`url`, not `httpUrl`) will not
-   connect: agentguard speaks stdio and Streamable HTTP only. Do not switch `mode` to `enforce`
+   connect: okgate speaks stdio and Streamable HTTP only. Do not switch `mode` to `enforce`
    or change caps unless the user asks.
 
 5. Next steps for the user: restart Gemini CLI so it starts the proxy, run the agent once, then
-   `/agentguard:report`. When the report looks right, set `mode: enforce` in agentguard.yaml.
-   Emergency stop: `npx -y @agentwares/agentguard kill` (until `npx -y @agentwares/agentguard resume`).
+   `/agentguard:report`. When the report looks right, set `mode: enforce` in okgate.yaml.
+   Emergency stop: `npx -y -p @agentwares/agentguard okgate kill` (until `npx -y -p @agentwares/agentguard okgate resume`).
 """

@@ -1,5 +1,5 @@
 /**
- * Permission diff for pull requests: which changes to `agentguard.yaml`, `.claude/settings.json`
+ * Permission diff for pull requests: which changes to `okgate.yaml`, `.claude/settings.json`
  * (Claude Code permissions) and `mcp.json` widen what an agent may do. Pure functions over file
  * text; the CLI reads git, the Action posts the markdown.
  */
@@ -82,7 +82,7 @@ function numberDiff(
   });
 }
 
-/** `agentguard.yaml` — caps, mode, allow/deny, dry-run, approvals, agents, upstreams. */
+/** `okgate.yaml` — caps, mode, allow/deny, dry-run, approvals, agents, upstreams. */
 export function diffAgentguardPolicy(
   file: string,
   beforeText: string | undefined,
@@ -472,7 +472,8 @@ export function diffPermissionFile(
   afterText: string | undefined,
 ): Finding[] {
   const base = file.split("/").pop() ?? file;
-  if (/agentguard.*\.ya?ml$/i.test(base)) return diffAgentguardPolicy(file, beforeText, afterText);
+  if (/(okgate|agentguard).*\.ya?ml$/i.test(base))
+    return diffAgentguardPolicy(file, beforeText, afterText);
   if (/settings(\.local)?\.json$/i.test(base) && file.includes(".claude"))
     return diffClaudeSettings(file, beforeText, afterText);
   if (/mcp.*\.json$/i.test(base) || base === "claude_desktop_config.json")
@@ -486,12 +487,10 @@ export function renderPermissionDiffMarkdown(
 ): string {
   const widen = findings.filter((f) => f.severity === "widen");
   const lines: string[] = [];
-  lines.push(`### ${opts.title ?? "agentguard permission diff"}`);
+  lines.push(`### ${opts.title ?? "okgate permission diff"}`);
   lines.push("");
   if (findings.length === 0) {
-    lines.push(
-      "No permission changes in `agentguard.yaml`, `.claude/settings.json` or MCP configs.",
-    );
+    lines.push("No permission changes in `okgate.yaml`, `.claude/settings.json` or MCP configs.");
     return lines.join("\n");
   }
   lines.push(
@@ -515,7 +514,7 @@ export function renderPermissionDiffMarkdown(
   }
   lines.push("");
   lines.push(
-    "<sub>Posted by [agentguard](https://github.com/agentwares/agentguard/tree/main/assets/permission-diff-action) permission-diff.</sub>",
+    "<sub>Posted by [okgate](https://github.com/agentwares/agentguard/tree/main/assets/permission-diff-action) permission-diff.</sub>",
   );
   return lines.join("\n");
 }

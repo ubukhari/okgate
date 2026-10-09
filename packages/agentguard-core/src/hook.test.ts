@@ -212,9 +212,9 @@ describe("irreversible classes", () => {
 });
 
 describe("rules that refuse whatever the human turn", () => {
-  it("the agent approving its own held action, or writing agentguard's state", () => {
+  it("the agent approving its own held action, or writing its state", () => {
     expect(assess("agentguard approve apr_123").denied?.details).toMatchObject({
-      rule: "agentguard-self",
+      rule: "okgate-self",
     });
     expect(assess("npx -y @agentwares/agentguard@latest approve apr_1").denied).toBeDefined();
     expect(assess("node ../agentguard/dist/cli.js resume").denied).toBeDefined();
@@ -306,7 +306,7 @@ describe("Guard.preflight", () => {
     expect(first.decision).toBe("deny");
     expect(first.error?.code).toBe("APPROVAL_REQUIRED");
     expect(first.error?.cause).toMatch(/irreversible \(git-push/);
-    expect(first.error?.fix).toMatch(/agentguard approve apr_/);
+    expect(first.error?.fix).toMatch(/okgate approve apr_/);
     expect(first.error?.fix).toMatch(
       /do not .*run the approval yourself|run the approval yourself/i,
     );

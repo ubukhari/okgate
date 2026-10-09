@@ -1,10 +1,11 @@
 {
   "name": "@agentwares/agentguard",
-  "version": "0.1.9",
-  "description": "MCP policy proxy for AI agents: hard spend limits, destructive-action gating with approvals, a kill switch, scoped credentials, dry-run writes with mutation diffs, loop breaker, blast-radius caps and a hash-chained audit log. Hook mode applies the same policy to Claude Code, Codex and Gemini CLI shell commands and file edits, and runs irreversible commands only on a turn a person typed. Audit mode reports which CLAUDE.md / AGENTS.md rules your coding agents broke, from your own sessions, locally. No LLM calls, no phone-home, no account.",
+  "version": "0.1.10",
+  "description": "okgate (formerly agentguard): nothing irreversible without an OK. MCP policy proxy for AI agents: hard spend limits, destructive-action gating with approvals, a kill switch, scoped credentials, dry-run writes with mutation diffs, loop breaker, blast-radius caps and a hash-chained audit log. Hook mode applies the same policy to Claude Code, Codex and Gemini CLI shell commands and file edits, and runs irreversible commands only on a turn a person typed. Audit mode reports which CLAUDE.md / AGENTS.md rules your coding agents broke, from your own sessions, locally. No LLM calls, no phone-home, no account. Runs as `okgate`; the `agentguard` bin, agentguard.yaml, .agentguard/ and AGENTGUARD_* keep working.",
   "license": "MIT",
   "type": "module",
   "bin": {
+    "okgate": "./dist/cli.js",
     "agentguard": "./dist/cli.js"
   },
   "main": "./dist/index.js",
@@ -13,6 +14,9 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./cli": {
+      "import": "./dist/cli.js"
     }
   },
   "files": [
@@ -25,7 +29,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "mcpName": "io.github.agentwares/agentguard",
+  "mcpName": "io.github.agentwares/okgate",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/agentwares/agentguard.git",
@@ -33,6 +37,8 @@
   },
   "homepage": "https://github.com/agentwares/agentguard#readme",
   "keywords": [
+    "okgate",
+    "agentguard",
     "mcp",
     "mcp-proxy",
     "model-context-protocol",

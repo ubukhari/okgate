@@ -97,8 +97,8 @@ export function extractSpendFromResult(policy: Policy, result: unknown): number 
  * List prices (USD per million tokens) for common models, checked 2026-09-02. Patterns are tried in
  * order, so specific ids come before family globs. A model that matches nothing is *not* charged —
  * `estimateLlmCost` returns undefined and the caller records the call at $0 with a reason, so an
- * unpriced model shows up in `agentguard report` rather than quietly escaping the cap. Add it to
- * `spend.models` in agentguard.yaml to bring it under the budget.
+ * unpriced model shows up in `okgate report` rather than quietly escaping the cap. Add it to
+ * `spend.models` in okgate.yaml to bring it under the budget.
  */
 export const DEFAULT_MODEL_PRICES: Record<string, ModelPrice> = {
   "claude-fable-5*": { input_per_mtok: 10, output_per_mtok: 50, cached_input_per_mtok: 1 },
@@ -126,12 +126,12 @@ export const DEFAULT_MODEL_PRICES: Record<string, ModelPrice> = {
 
 /**
  * Prefix of the audit `reason` recorded when a model has no list price. The call is charged $0, so
- * it does not count against `spend_usd`; `agentguard report` reads this back to say so out loud.
+ * it does not count against `spend_usd`; `okgate report` reads this back to say so out loud.
  */
 export const NO_LIST_PRICE_REASON = "no list price for";
 
 export function noListPriceReason(model: string): string {
-  return `${NO_LIST_PRICE_REASON} "${model}" — not counted against spend_usd; add it under spend.models in agentguard.yaml`;
+  return `${NO_LIST_PRICE_REASON} "${model}" — not counted against spend_usd; add it under spend.models in the policy file (okgate.yaml)`;
 }
 
 export interface LlmUsage {

@@ -1,14 +1,16 @@
 {
-  "name": "agentwares-agentguard",
-  "version": "0.1.9",
+  "name": "agentwares-okgate",
+  "version": "0.1.10",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@9.15.9",
   "engines": {
     "node": ">=22"
   },
-  "description": "MCP policy proxy for AI agents: hard spend limits, destructive-action approvals, kill switch, scoped keys, dry-run diffs, loop breaker, hash-chained audit log.",
+  "description": "Nothing irreversible without an OK. okgate (formerly agentguard), the MCP policy proxy for AI agents: hard spend limits, destructive-action approvals, kill switch, scoped keys, dry-run diffs, loop breaker, hash-chained audit log.",
   "keywords": [
+    "okgate",
+    "agentguard",
     "mcp",
     "mcp-proxy",
     "model-context-protocol",
@@ -35,7 +37,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/agentwares/agentguard"
+    "url": "https://github.com/agentwares/okgate"
   },
   "scripts": {
     "build": "pnpm -r --workspace-concurrency=1 build",

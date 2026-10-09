@@ -1,15 +1,32 @@
 {
   "name": "agentwares",
-  "description": "agentguard, an MCP policy proxy, set up from inside Claude Code: dry-run first, then spend caps, approvals for destructive tools, a kill switch and a hash-chained audit log. Open source, no account.",
+  "description": "okgate, an MCP policy proxy, set up from inside Claude Code: dry-run first, then spend caps, approvals for destructive tools, a kill switch and a hash-chained audit log. Open source, no account.",
   "owner": {
     "name": "agentwares",
     "url": "https://github.com/agentwares"
   },
   "plugins": [
     {
+      "name": "okgate",
+      "source": "./plugins/okgate",
+      "description": "Put okgate in front of this project's MCP servers and read what an agent run did or would have done. /okgate:init runs `npx -p @agentwares/agentguard okgate init`; /okgate:report explains the dry-run report; /okgate:audit shows which CLAUDE.md / AGENTS.md rules your coding agents broke; /okgate:hooks sets up hook mode.",
+      "category": "security",
+      "tags": [
+        "mcp",
+        "mcp-proxy",
+        "mcp-gateway",
+        "mcp-security",
+        "dry-run",
+        "spend-limit",
+        "kill-switch",
+        "human-in-the-loop",
+        "audit-log"
+      ]
+    },
+    {
       "name": "agentguard",
       "source": "./plugins/agentguard",
-      "description": "Put agentguard in front of this project's MCP servers and read what an agent run did or would have done. /agentguard:init runs `npx @agentwares/agentguard init`; /agentguard:report explains the dry-run report; /agentguard:audit shows which CLAUDE.md / AGENTS.md rules your coding agents broke; /agentguard:hooks sets up hook mode.",
+      "description": "Deprecated: agentguard is now okgate. Install okgate@agentwares instead; this entry keeps the same skills under /agentguard:* until at least 2027-01-15.",
       "category": "security",
       "tags": [
         "mcp",

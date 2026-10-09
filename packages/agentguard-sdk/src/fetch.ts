@@ -144,7 +144,15 @@ function blockedResponse(status: number, body: Record<string, unknown>): Respons
       error: { type: body.code, message: `${body.code}: ${body.cause} — ${body.fix}` },
       ...body,
     }),
-    { status, headers: { "Content-Type": "application/json", "X-Agentguard": String(body.code) } },
+    {
+      status,
+      // X-Agentguard is the same header under the name before the rename to okgate
+      headers: {
+        "Content-Type": "application/json",
+        "X-Okgate": String(body.code),
+        "X-Agentguard": String(body.code),
+      },
+    },
   );
 }
 
@@ -176,8 +184,8 @@ export function createGuardedFetch(ag: AgentGuard, opts: GuardedFetchOptions = {
     if (killed.killed) {
       return blockedResponse(403, {
         code: "KILLED",
-        cause: `agentguard kill switch is on (${killed.reason ?? ""})`,
-        fix: "a human must run `agentguard resume`",
+        cause: `okgate kill switch is on (${killed.reason ?? ""})`,
+        fix: "a human must run `okgate resume`",
         retryable: false,
       });
     }
@@ -191,7 +199,7 @@ export function createGuardedFetch(ag: AgentGuard, opts: GuardedFetchOptions = {
       return blockedResponse(402, {
         code: "CAP_EXCEEDED",
         cause: `spend_usd cap for ${scope} is used up`,
-        fix: "stop and report to the user; a human can raise caps in agentguard.yaml",
+        fix: "stop and report to the user; a human can raise caps in the policy file (okgate.yaml)",
         retryable: false,
         details: { remaining: check.remaining, runId: runId() },
       });

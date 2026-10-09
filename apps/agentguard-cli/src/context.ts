@@ -2,14 +2,22 @@
  * Shared CLI plumbing: locate and load the policy, build the file-backed guard, print things.
  */
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
-import { Guard, type ApprovalRecord, type GuardEvent } from "@agentwares/agentguard-core";
+import { basename, resolve } from "node:path";
+import {
+  Guard,
+  POLICY_FILE,
+  envTwin,
+  type ApprovalRecord,
+  type GuardEvent,
+} from "@agentwares/agentguard-core";
 import {
   FileApprovalStore,
   FileAuditSink,
-  FileKillSwitch,
   FileStateStore,
+  findPolicyFile,
+  killSwitchFor,
   loadPolicyFile,
+  type FileKillSwitch,
   type LoadedPolicy,
 } from "@agentwares/agentguard-core/node";
 import { existsSync as exists, readFileSync } from "node:fs";
@@ -17,7 +25,8 @@ import { registrationPath, type HttpRegistration } from "./registration.js";
 import { createAlerter } from "./notify.js";
 import { flagString, type ParsedArgs } from "./args.js";
 
-export const DEFAULT_POLICY_FILE = "agentguard.yaml";
+/** `okgate.yaml`; an existing `agentguard.yaml` is read when there is no `okgate.yaml`. */
+export const DEFAULT_POLICY_FILE = POLICY_FILE;
 
 import { homedir } from "node:os";
 
@@ -75,11 +84,10 @@ export function defaultIo(): Io {
   };
 }
 
+/** --config → OKGATE_CONFIG → AGENTGUARD_CONFIG → okgate.yaml, else agentguard.yaml, in cwd. */
 export function policyPathFrom(args: ParsedArgs, io: Io): string {
-  return resolve(
-    io.cwd,
-    flagString(args, "config") ?? io.env.AGENTGUARD_CONFIG ?? DEFAULT_POLICY_FILE,
-  );
+  const named = flagString(args, "config") ?? envTwin(io.env, "CONFIG");
+  return named !== undefined ? resolve(io.cwd, named) : findPolicyFile(io.cwd);
 }
 
 export function loadPolicyFor(
@@ -112,7 +120,7 @@ export function createFileGuard(
     env?: NodeJS.ProcessEnv;
   } = {},
 ): FileGuard {
-  const kill = new FileKillSwitch(loaded.killPath);
+  const kill = killSwitchFor(loaded);
   const audit = new FileAuditSink(loaded.auditPath);
   const approvals = new FileApprovalStore(loaded.stateDir);
   const alerter =
@@ -126,6 +134,7 @@ export function createFileGuard(
     kill,
     approvals,
     env: opts.env ?? process.env,
+    policyFile: basename(loaded.path),
     approvalUrl: opts.approvalUrl,
     onEvent: async (event) => {
       await opts.onEvent?.(event);

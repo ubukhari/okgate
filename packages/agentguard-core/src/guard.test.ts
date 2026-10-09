@@ -163,7 +163,7 @@ describe("Guard", () => {
     const first = await guard.run({ tool: crmDelete, args: { id: "c_9" }, runId: "r" }, exec);
     expect(first.error).toMatchObject({ code: "APPROVAL_REQUIRED", retryable: true });
     const id = (first.error?.details as { approvalId: string }).approvalId;
-    expect(first.error?.fix).toContain(`agentguard approve ${id}`);
+    expect(first.error?.fix).toContain(`okgate approve ${id}`);
     expect(executed).toBe(0);
     expect(events.filter((e) => e.type === "APPROVAL_REQUIRED")).toHaveLength(1);
     expect(events[0]?.approval?.id).toBe(id);

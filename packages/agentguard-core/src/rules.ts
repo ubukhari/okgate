@@ -9,9 +9,10 @@
  * Two explicit forms always work, and win over the patterns:
  *
  * - an inline comment on the rule's line, or on its own line right after the rule:
- *   `<!-- agentguard: no-push main -->` (several checks separated by `;`; `none` says the rule is
+ *   `<!-- okgate: no-push main -->`, or the older `<!-- agentguard: … -->` (several checks
+ *   separated by `;`; `none` says the rule is
  *   not mechanically checkable and silences the patterns);
- * - `audit.rules` in agentguard.yaml: `[{ text: "…", check: "no-force-push" }]`.
+ * - `audit.rules` in okgate.yaml: `[{ text: "…", check: "no-force-push" }]`.
  *
  * The check grammar (`formatCheck` writes it, `parseCheck` reads it):
  *
@@ -104,7 +105,7 @@ export interface RuleFileInput {
   text: string;
 }
 
-/** An `audit.rules` entry in agentguard.yaml. */
+/** An `audit.rules` entry in okgate.yaml. */
 export interface ConfigRule {
   id?: string;
   text?: string;
@@ -123,7 +124,7 @@ export interface ExtractResult {
 }
 
 export const NOT_CHECKABLE_HINT =
-  "not checkable mechanically — add an inline check (<!-- agentguard: … -->) or ask your agent with /agentguard:audit";
+  "not checkable mechanically — add an inline check (<!-- okgate: … -->) or ask your agent with /okgate:audit";
 
 // ------------------------------------------------------------------------------- grammar ---
 
@@ -704,7 +705,8 @@ export function matchRuleText(
 const DIRECTIVE =
   /\b(never|always|must|mustn't|do not|don't|should|shouldn't|avoid|make sure|ensure|prefer|required|only|forbidden|prohibited|unless)\b|^(run|use|keep|write|add|ask|check|commit|push|search|read|prefer|follow|put|name|open|update|test|log|document|cite|grep|create|delete|remove|install|lint|format|deploy|publish)\b/i;
 
-const AGENTGUARD_COMMENT = /<!--\s*agentguard\s*:([\s\S]*?)-->/gi;
+// `<!-- agentguard: … -->` is the same check under the product's name before the rename
+const AGENTGUARD_COMMENT = /<!--\s*(?:okgate|agentguard)\s*:([\s\S]*?)-->/gi;
 
 interface Block {
   line: number;
@@ -728,7 +730,7 @@ function makeRule(
       const parsed = parseCheck(part);
       if ("none" in parsed) silenced = true;
       else if ("error" in parsed)
-        errors.push({ file, line: block.line, message: `agentguard check ${parsed.error}` });
+        errors.push({ file, line: block.line, message: `okgate check ${parsed.error}` });
       else
         checks.push({
           spec: parsed.spec,
@@ -894,12 +896,12 @@ function ruleId(file: string, text: string, used: Set<string>): string {
 
 /**
  * Every rule the files state, numbered in order, with the checks the patterns or the explicit
- * forms give each. `config` is agentguard.yaml's `audit.rules`.
+ * forms give each. `config` is okgate.yaml's `audit.rules`.
  */
 export function extractRules(
   files: readonly RuleFileInput[],
   config: readonly ConfigRule[] = [],
-  configPath = "agentguard.yaml",
+  configPath = "okgate.yaml",
 ): ExtractResult {
   const errors: RuleExtractError[] = [];
   const used = new Set<string>();

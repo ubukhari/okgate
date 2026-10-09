@@ -1,6 +1,6 @@
 /**
  * Dry-run synthesis: a plausible success shaped by the tool's output schema so the agent keeps
- * going, while the intended mutation is recorded for `agentguard diff`.
+ * going, while the intended mutation is recorded for `okgate diff`.
  */
 import type { MutationVerb } from "./classify.js";
 
@@ -127,7 +127,7 @@ export function synthesizeResult(options: SynthesizeOptions): unknown {
       ok: true,
       id: opts.random(),
       dry_run: true,
-      message: `${options.tool} was not executed (agentguard dry-run); this is a synthetic success`,
+      message: `${options.tool} was not executed (okgate dry-run); this is a synthetic success`,
     };
   }
   return synth(options.outputSchema, "", opts, args, 0);

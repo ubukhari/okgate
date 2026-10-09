@@ -2,7 +2,7 @@
  * Where coding agents keep their transcripts, and which of them are about one repository.
  *
  * The layout is the one seatledger reads (apps/seatledger-cli/src/paths.ts, PROD-1A), kept in
- * step with it rather than imported: seatledger is not on npm yet, and the public agentguard repo
+ * step with it rather than imported: seatledger is not on npm yet, and the public okgate repo
  * is generated without it (see docs/reports/AG-AUDIT.md).
  *
  * - Claude Code: `$CLAUDE_CONFIG_DIR/projects` (comma-separated for several), else

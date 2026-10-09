@@ -1,7 +1,7 @@
 /**
  * Recorded-fixture upstream: serves `tools/list` from a recording and answers `tools/call` with
  * the recorded result for (tool, canonical args). Lets the proxy tests run against a frozen
- * upstream so a change in agentguard's decisions is caught as a diff in `expected`.
+ * upstream so a change in okgate's decisions is caught as a diff in `expected`.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
@@ -23,7 +23,7 @@ export interface Recording {
   upstream: string;
   tools: Tool[];
   calls: RecordedCall[];
-  /** outcomes agentguard produced over this recording, per scenario */
+  /** outcomes okgate produced over this recording, per scenario */
   expected: Record<string, unknown>;
 }
 

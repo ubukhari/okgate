@@ -42,15 +42,15 @@ async function proxyOver(initial: Pages) {
   });
   const [clientT, serverT] = InMemoryTransport.createLinkedPair();
   await server.connect(serverT);
-  const client = new Client({ name: "agentguard", version: "test" }, { capabilities: {} });
+  const client = new Client({ name: "okgate", version: "test" }, { capabilities: {} });
   await client.connect(clientT);
 
   const policy = parsePolicy({ mode: "dry-run" });
   const loaded: LoadedPolicy = {
     policy,
-    path: "/tmp/agentguard.yaml",
+    path: "/tmp/okgate.yaml",
     baseDir: "/tmp",
-    stateDir: "/tmp/.agentguard",
+    stateDir: "/tmp/.okgate",
     auditPath: "/tmp/audit.jsonl",
     killPath: "/tmp/KILL",
   };
@@ -95,7 +95,7 @@ const endless: Pages = (c) => {
   return { names: [`t${n}`], next: `c${n + 1}` };
 };
 
-describe("agentguard proxy: tools/list paging (BUG-3)", () => {
+describe("okgate proxy: tools/list paging (BUG-3)", () => {
   it("reads a three-page list", async () => {
     const p = await proxyOver(three);
     expect(p.names()).toEqual(["a", "b", "c", "d"]);

@@ -1,6 +1,6 @@
 /**
  * Hook mode: the coding agent's own shell commands and file edits, checked against the same
- * `agentguard.yaml` as MCP calls. A pre-execution hook (Claude Code `PreToolUse`, Codex
+ * `okgate.yaml` as MCP calls. A pre-execution hook (Claude Code `PreToolUse`, Codex
  * `PreToolUse`, Gemini CLI `BeforeTool`) hands over one tool call; `hookActionFromInput` turns
  * it into a `HookAction`, `assessHookAction` applies the rules, and `Guard.preflight` applies
  * the stateful parts (kill switch, approvals, the human-turn gate, loop breaker, caps, audit).
@@ -11,6 +11,7 @@ import { classifyByName, type MutationVerb, type ToolClass } from "./classify.js
 import type { CounterDelta } from "./caps.js";
 import type { GuardErrorBody } from "./errors.js";
 import { firstMatch, firstPathMatch } from "./glob.js";
+import { LEGACY_STATE_DIR, POLICY_FILE, STATE_DIR } from "./names.js";
 import { BUILTIN_IRREVERSIBLE, type BuiltinIrreversible, type Policy } from "./policy.js";
 import {
   basename,
@@ -49,7 +50,7 @@ export const DEFAULT_MENTIONS: Record<BuiltinIrreversible, string[]> = {
     "pull request",
     "review",
   ],
-  "guard-config": ["agentguard", "hook", "hooks", "policy", "guard"],
+  "guard-config": ["okgate", "agentguard", "hook", "hooks", "policy", "guard"],
 };
 
 export interface HookAction {
@@ -76,10 +77,12 @@ export interface HookContext {
   home?: string;
   /** directories `rm` may clear without a human turn (system temp, the session scratchpad) */
   tmpDirs: string[];
-  /** agentguard's own state: approvals, audit log, kill switch */
+  /** okgate's own state: approvals, audit log, kill switch */
   stateDir: string;
   /** files whose edit changes the guard itself: the policy file and the hook settings files */
   guardFiles: string[];
+  /** the policy file's name, for messages (default `okgate.yaml`) */
+  policyFile?: string;
 }
 
 export interface IrreversibleMatch {
@@ -576,7 +579,7 @@ function builtinShellMatches(
     }
   }
 
-  const agIdx = argv.findIndex((a) => isAgentguardBin(a));
+  const agIdx = guardBinIndex(argv);
   if (agIdx >= 0) {
     const verb = argv.slice(agIdx + 1).find((a) => !a.startsWith("-"));
     if (verb === "hooks" || verb === "init") out.push({ rule: "guard-config", summary: line });
@@ -584,13 +587,35 @@ function builtinShellMatches(
   return out;
 }
 
-function isAgentguardBin(arg: string): boolean {
+/** `okgate`, `agentguard` (its name before the rename), either package, a version, or the built cli.js. */
+function isGuardBin(arg: string): boolean {
   const b = basename(arg);
   return (
+    b === "okgate" ||
     b === "agentguard" ||
-    /^agentguard@/.test(b) ||
-    /agentguard[\\/](dist[\\/])?cli\.[cm]?js$/.test(arg)
+    /^(okgate|agentguard)@/.test(b) ||
+    /(okgate|agentguard)(-cli)?[\\/](dist[\\/])?cli\.[cm]?js$/.test(arg)
   );
+}
+
+/**
+ * Where the guard's own command starts: the last of a run of guard words, so
+ * `npx -p @agentwares/agentguard okgate approve <id>` finds `okgate`, whose verb is `approve`.
+ */
+function guardBinIndex(argv: readonly string[]): number {
+  let idx = argv.findIndex((a) => isGuardBin(a));
+  if (idx < 0) return idx;
+  while (idx + 1 < argv.length && isGuardBin(argv[idx + 1]!)) idx += 1;
+  return idx;
+}
+
+/** `<base>/.okgate` and `<base>/.agentguard` for either one; any other directory alone. */
+function stateDirTwins(dir: string): string[] {
+  if (!dir) return [];
+  const m = /^(.*[\\/])?\.(okgate|agentguard)[\\/]?$/.exec(dir);
+  if (!m) return [dir];
+  const base = m[1] ?? "";
+  return [`${base}${STATE_DIR}`, `${base}${LEGACY_STATE_DIR}`];
 }
 
 function ghApiMethod(argv: string[]): string {
@@ -636,7 +661,7 @@ function isPublish(bin: string, argv: string[]): boolean {
 /** Is this command the agent approving, denying or resuming its own held actions? */
 function selfApproval(cmd: SimpleCommand): boolean {
   const argv = cmd.argv;
-  const idx = argv.findIndex((a) => isAgentguardBin(a));
+  const idx = guardBinIndex(argv);
   if (idx < 0) return false;
   const verb = argv.slice(idx + 1).find((a) => !a.startsWith("-"));
   return verb === "approve" || verb === "deny" || verb === "resume";
@@ -665,7 +690,8 @@ export function assessHookAction(
     });
   };
   const pathCtx = { workspace: ctx.workspace, home: ctx.home };
-  const stateDir = normalizePath(ctx.stateDir);
+  // the state directory and its twin under the other product name (.okgate / .agentguard)
+  const stateDirs = stateDirTwins(ctx.stateDir).map(normalizePath);
   const guardFiles = ctx.guardFiles.map((f) => normalizePath(f).toLowerCase());
 
   let commands: SimpleCommand[] = [];
@@ -695,7 +721,7 @@ export function assessHookAction(
         denied ??= denial(
           "an agent may not approve, deny or resume its own held actions",
           "stop and ask the user to run the approval in their own terminal (or `!` + the command in Claude Code); do not try another way",
-          { rule: "agentguard-self", command: summary },
+          { rule: "okgate-self", command: summary },
         );
       for (const m of builtinShellMatches(cmd, ctx))
         if (enabled.has(m.rule)) addMatch(m.rule, m.summary);
@@ -703,7 +729,7 @@ export function assessHookAction(
     const denyHit = matchShell(hooks.shell.deny);
     if (denyHit && !denied)
       denied = denial(
-        `this command matches hooks.shell.deny "${denyHit}" in agentguard.yaml`,
+        `this command matches hooks.shell.deny "${denyHit}" in ${ctx.policyFile ?? POLICY_FILE}`,
         "do not run it or a variant of it; tell the user what you were trying to do and ask how to proceed",
         { rule: "hooks.shell.deny", pattern: denyHit, command: summary },
       );
@@ -735,7 +761,7 @@ export function assessHookAction(
     const denyHit = names.map((n) => firstMatch(n, policy.deny)).find(Boolean);
     if (denyHit)
       denied = denial(
-        `"${action.tool}" is denied by agentguard.yaml (deny: ${denyHit})`,
+        `"${action.tool}" is denied by ${ctx.policyFile ?? POLICY_FILE} (deny: ${denyHit})`,
         "use a different tool; the operator can remove it from `deny`",
         { rule: "deny", pattern: denyHit },
       );
@@ -750,22 +776,22 @@ export function assessHookAction(
     }
   }
 
-  // paths: the agentguard state directory, deny/approval patterns, guard files, rule paths
+  // paths: the okgate state directory, deny/approval patterns, guard files, rule paths
   const writes: string[] = [];
   for (const t of writeTargets) {
     if (t.path === undefined) continue;
     const path = t.path.endsWith("/…") || t.path.endsWith("/*") ? t.path.slice(0, -2) : t.path;
     writes.push(path);
-    if (stateDir && isWithin(path, stateDir) && !denied)
+    if (stateDirs.some((d) => d && isWithin(path, d)) && !denied)
       denied = denial(
-        "agentguard's state directory (approvals, audit log, kill switch) is written only by agentguard",
+        "okgate's state directory (approvals, audit log, kill switch) is written only by okgate",
         "do not modify it; ask the user if something there needs to change",
-        { rule: "agentguard-self", path },
+        { rule: "okgate-self", path },
       );
     const denyHit = firstPathMatch(path, hooks.paths.deny, pathCtx);
     if (denyHit && !denied)
       denied = denial(
-        `writing ${path} matches hooks.paths.deny "${denyHit}" in agentguard.yaml`,
+        `writing ${path} matches hooks.paths.deny "${denyHit}" in ${ctx.policyFile ?? POLICY_FILE}`,
         "leave this file alone; tell the user what change you wanted to make",
         { rule: "hooks.paths.deny", pattern: denyHit, path },
       );

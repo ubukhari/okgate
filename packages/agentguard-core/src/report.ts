@@ -1,6 +1,6 @@
 /**
  * The incident-shaped report: what this run did, what it would have destroyed or spent, where
- * it was halted — from the audit log alone. Also the mutation diff for `agentguard diff`.
+ * it was halted — from the audit log alone. Also the mutation diff for `okgate diff`.
  */
 import type { AuditEntry } from "./audit.js";
 import type { MutationVerb } from "./classify.js";
@@ -68,7 +68,7 @@ export interface HookSummary {
   irreversible: number;
   /** irreversible calls that ran because a person's turn authorized them */
   onHumanTurn: number;
-  /** calls that ran once after `agentguard approve` */
+  /** calls that ran once after `okgate approve` */
   approved: number;
   /** enforce: irreversible calls held for approval */
   irreversibleHeld: number;
@@ -258,7 +258,7 @@ function renderHooks(h: HookSummary, lines: string[]): void {
   let line = `${h.calls} call${plural(h.calls)} checked: ${kinds.join(", ")}.`;
   if (h.irreversible > 0) {
     const parts = [`${h.onHumanTurn} ran on a person's turn`];
-    if (h.approved) parts.push(`${h.approved} after \`agentguard approve\``);
+    if (h.approved) parts.push(`${h.approved} after \`okgate approve\``);
     if (h.irreversibleHeld) parts.push(`${h.irreversibleHeld} held for approval`);
     const ranOther = h.irreversible - h.onHumanTurn - h.approved - h.irreversibleHeld;
     if (ranOther > 0) parts.push(`${ranOther} ran in dry-run without one`);
@@ -277,7 +277,9 @@ function renderHooks(h: HookSummary, lines: string[]): void {
         `| ${w.seq} | ${w.ts} | \`${w.code}\` | \`${escapeCell(w.summary).replace(/`/g, "'")}\` | ${escapeCell(w.cause)} |`,
       );
     lines.push("");
-    lines.push("Set `hooks.mode: enforce` in agentguard.yaml when this list looks right.");
+    lines.push(
+      "Set `hooks.mode: enforce` in the policy file (okgate.yaml) when this list looks right.",
+    );
     lines.push("");
   }
 }
@@ -287,11 +289,11 @@ export function renderReportMarkdown(report: Report): string {
   const scope = report.runId
     ? `run \`${report.runId}\``
     : `${report.runs.length} run${report.runs.length === 1 ? "" : "s"}`;
-  lines.push(`# agentguard report — ${scope}`);
+  lines.push(`# okgate report — ${scope}`);
   lines.push("");
   if (report.entries === 0) {
     lines.push(
-      "No tool calls recorded. Point your agent at the proxy (or run `agentguard hooks install` for a coding agent) and run it once.",
+      "No tool calls recorded. Point your agent at the proxy (or run `okgate hooks install` for a coding agent) and run it once.",
     );
     return lines.join("\n");
   }
@@ -318,7 +320,7 @@ export function renderReportMarkdown(report: Report): string {
     lines.push(`It would have ${parts.join(", ")}.`);
     lines.push("");
     lines.push(
-      "Run `agentguard diff` for the record-by-record mutation diff. Flip `mode: enforce` when it looks right.",
+      "Run `okgate diff` for the record-by-record mutation diff. Flip `mode: enforce` when it looks right.",
     );
     lines.push("");
   }
@@ -344,11 +346,13 @@ export function renderReportMarkdown(report: Report): string {
     for (const u of report.unpriced)
       lines.push(`- \`${u.tool}\` — ${u.calls} call${plural(u.calls)}`);
     lines.push("");
-    lines.push("Add a price under `spend.models` in agentguard.yaml to bring them under the cap.");
+    lines.push(
+      "Add a price under `spend.models` in the policy file (okgate.yaml) to bring them under the cap.",
+    );
     lines.push("");
   }
   if (report.halts.length > 0) {
-    lines.push("## Where agentguard stepped in");
+    lines.push("## Where okgate stepped in");
     lines.push("");
     lines.push("| # | when | code | tool | why |");
     lines.push("|---|------|------|------|-----|");
@@ -381,7 +385,7 @@ export function renderReportMarkdown(report: Report): string {
   return lines.join("\n");
 }
 
-/** `agentguard diff`: one block per faked mutation, oldest first. */
+/** `okgate diff`: one block per faked mutation, oldest first. */
 export function renderMutationDiff(
   entries: readonly AuditEntry[],
   opts: { runId?: string } = {},

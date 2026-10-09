@@ -38,6 +38,7 @@ import {
   type KillState,
   type KillSwitch,
 } from "./kill.js";
+import { KILL_ENV, LEGACY_KILL_ENV, POLICY_FILE } from "./names.js";
 import { describePattern, detectLoop, LoopDetector } from "./loop.js";
 import { normalizeArgs, redactSecrets, sha256Hex, stableStringify } from "./normalize.js";
 import {
@@ -61,7 +62,7 @@ export interface PreflightCall {
   /** read the human-turn evidence; called only when the call is irreversible */
   humanTurn?: () =>
     Promise<{ turn?: HumanTurn; missing?: string }> | { turn?: HumanTurn; missing?: string };
-  /** how the person approves, for the agent's message: `npx @agentwares/agentguard approve <id>` */
+  /** how the person approves, for the agent's message: `npx -y -p @agentwares/agentguard okgate approve <id>` */
   approveCommand?: (id: string) => string;
 }
 
@@ -110,6 +111,8 @@ export interface GuardOptions {
   /** environment for the env kill switch (default `process.env`) */
   env?: Record<string, string | undefined>;
   sleep?: (ms: number) => Promise<void>;
+  /** the policy file's name, for messages: `okgate.yaml` (default) or a legacy `agentguard.yaml` */
+  policyFile?: string;
 }
 
 export interface GuardCall {
@@ -149,6 +152,8 @@ const defaultIsError = (value: unknown): boolean =>
 
 export class Guard {
   readonly policy: Policy;
+  /** the policy file's name, as messages to the agent name it */
+  readonly policyFile: string;
   readonly state: StateStore;
   readonly audit: AuditSink;
   readonly kill: KillSwitch;
@@ -164,13 +169,18 @@ export class Guard {
 
   constructor(opts: GuardOptions) {
     this.policy = opts.policy;
+    this.policyFile = opts.policyFile ?? POLICY_FILE;
     this.state = opts.state ?? new MemoryStateStore();
     this.audit = opts.audit ?? new MemoryAuditSink();
     this.approvals = opts.approvals ?? new MemoryApprovalStore();
     this.now = opts.now ?? (() => new Date());
+    // The policy's variable, and both product names' variables whatever the policy says:
+    // AGENTGUARD_KILL=1 set before the rename to okgate must still halt everything.
+    const env = opts.env ?? process.env;
+    const killVars = [...new Set([opts.policy.kill.env, KILL_ENV, LEGACY_KILL_ENV])];
     this.kill = new CompositeKillSwitch([
       this.memoryKill,
-      new EnvKillSwitch(opts.policy.kill.env, opts.env ?? process.env),
+      ...killVars.map((name) => new EnvKillSwitch(name, env)),
       ...(opts.kill ? [opts.kill] : []),
     ]);
     this.caps = new CapsEngine(this.state, this.now);
@@ -280,7 +290,7 @@ export class Guard {
       reason: meta.reason,
     };
     if (!check.ok && !meta.force) {
-      const error = capError(check, runId);
+      const error = capError(check, runId, this.policyFile);
       const entry = await this.audit.append({
         ...base,
         outcome: "blocked",
@@ -306,7 +316,7 @@ export class Guard {
     await this.caps.charge(runId, delta, meta.agent?.name);
     if (!check.ok) {
       // Money already left (e.g. a streamed LLM response): record it, alert, block the next call.
-      const error = capError(check, runId);
+      const error = capError(check, runId, this.policyFile);
       const entry = await this.audit.append({
         ...base,
         reason: `over cap after the fact: ${error.cause}`,
@@ -433,8 +443,8 @@ export class Guard {
         "halted",
         {
           code: "KILLED",
-          cause: `agentguard kill switch is on (${killed.source ?? "unknown"}: ${killed.reason ?? "no reason given"})`,
-          fix: "stop the run; a human must run `agentguard resume` (or clear the KILL file / AGENTGUARD_KILL) before any tool call succeeds",
+          cause: `okgate kill switch is on (${killed.source ?? "unknown"}: ${killed.reason ?? "no reason given"})`,
+          fix: "stop the run; a human must run `okgate resume` (or clear the KILL file / OKGATE_KILL / AGENTGUARD_KILL) before any tool call succeeds",
           retryable: false,
           details: { source: killed.source, reason: killed.reason, at: killed.at },
         },
@@ -444,7 +454,7 @@ export class Guard {
     }
 
     // 2. scope
-    const denied = scopeDenial(policy, agent, name, call.upstream);
+    const denied = scopeDenial(policy, agent, name, call.upstream, this.policyFile);
     if (denied) return fail("blocked", denied, "block", "TOOL_DENIED");
 
     // 3. unknown → block
@@ -454,7 +464,7 @@ export class Guard {
         {
           code: "TOOL_DENIED",
           cause: `"${name}" could not be classified (no annotations, no recognizable verb) and classify.unknown is "block"`,
-          fix: `add "${name}" to classify.read or classify.write in agentguard.yaml`,
+          fix: `add "${name}" to classify.read or classify.write in ${this.policyFile}`,
           retryable: false,
           details: { classification },
         },
@@ -515,7 +525,8 @@ export class Guard {
     // 6. caps
     const caps = effectiveCaps(policy, agent);
     const check = await this.caps.check(call.runId, caps, delta, agent?.name);
-    if (!check.ok) return fail("blocked", capError(check, call.runId), "block", "CAP_EXCEEDED");
+    if (!check.ok)
+      return fail("blocked", capError(check, call.runId, this.policyFile), "block", "CAP_EXCEEDED");
 
     // 7. dry-run
     if (willFake) {
@@ -671,8 +682,8 @@ export class Guard {
         "halted",
         {
           code: "KILLED",
-          cause: `agentguard kill switch is on (${killed.source ?? "unknown"}: ${killed.reason ?? "no reason given"})`,
-          fix: "stop; a human must run `agentguard resume` before any guarded command runs",
+          cause: `okgate kill switch is on (${killed.source ?? "unknown"}: ${killed.reason ?? "no reason given"})`,
+          fix: "stop; a human must run `okgate resume` before any guarded command runs",
           retryable: false,
           details: { source: killed.source, reason: killed.reason, at: killed.at },
         },
@@ -724,13 +735,13 @@ export class Guard {
         if (outcome.kind === "pending") {
           approvalId = outcome.record.id;
           hook.approval_id = approvalId;
-          const command = call.approveCommand?.(approvalId) ?? `agentguard approve ${approvalId}`;
+          const command = call.approveCommand?.(approvalId) ?? `okgate approve ${approvalId}`;
           return refuse(
             "pending",
             {
               ...outcome.error,
               cause: `${why}. It needs a person's approval (approval ${approvalId}).`,
-              fix: `stop and tell the user: this needs their approval. They can run \`${command}\` in a terminal in this project${action.client === "claude-code" ? ` (or type \`! ${command}\` in Claude Code)` : ""}${!gateOk ? ", or say in their own words that you should do it" : ""}; then retry this exact command once. Do not change it, work around it, or run the approval yourself: agentguard refuses an approval from the agent.`,
+              fix: `stop and tell the user: this needs their approval. They can run \`${command}\` in a terminal in this project${action.client === "claude-code" ? ` (or type \`! ${command}\` in Claude Code)` : ""}${!gateOk ? ", or say in their own words that you should do it" : ""}; then retry this exact command once. Do not change it, work around it, or run the approval yourself: okgate refuses an approval from the agent.`,
             },
             outcome.fresh ? "APPROVAL_REQUIRED" : undefined,
             outcome.record,
@@ -781,7 +792,7 @@ export class Guard {
     // 6. caps
     const check = await this.caps.check(runId, effectiveCaps(policy), a.delta);
     if (!check.ok) {
-      const r = await enforceOr("blocked", capError(check, runId), "CAP_EXCEEDED");
+      const r = await enforceOr("blocked", capError(check, runId, this.policyFile), "CAP_EXCEEDED");
       if (r) return r;
     }
 
@@ -880,12 +891,12 @@ export class Guard {
       error: {
         code: "APPROVAL_REQUIRED",
         cause: `"${name}" needs a human's approval before it runs (approval ${record.id})`,
-        fix: `tell the user to run \`agentguard approve ${record.id}\`${url ? ` or open ${url}` : ""}, then retry this exact call once; do not change the arguments`,
+        fix: `tell the user to run \`okgate approve ${record.id}\`${url ? ` or open ${url}` : ""}, then retry this exact call once; do not change the arguments`,
         retryable: true,
         details: {
           approvalId: record.id,
           expiresAt: record.expires_at,
-          command: `agentguard approve ${record.id}`,
+          command: `okgate approve ${record.id}`,
           url,
         },
       },
@@ -907,6 +918,7 @@ function scopeDenial(
   agent: AgentScope | undefined,
   name: string,
   upstream: string | undefined,
+  file: string,
 ): GuardErrorBody | undefined {
   const deny = (cause: string, fix: string): GuardErrorBody => ({
     code: "TOOL_DENIED",
@@ -933,19 +945,19 @@ function scopeDenial(
   }
   if (matchesAny(name, policy.deny))
     return deny(
-      `"${name}" is denied by agentguard.yaml`,
+      `"${name}" is denied by ${file}`,
       "use a different tool; the operator can remove it from `deny`",
     );
   if (policy.allow && policy.allow.length > 0 && !matchesAny(name, policy.allow)) {
     return deny(
-      `"${name}" is not in the agentguard.yaml allowlist`,
+      `"${name}" is not in the ${file} allowlist`,
       `allowed patterns: ${policy.allow.join(", ")}`,
     );
   }
   return undefined;
 }
 
-function capError(check: CapCheck, runId: string): GuardErrorBody {
+function capError(check: CapCheck, runId: string, file: string): GuardErrorBody {
   const x = check.exceeded!;
   const scope = x.scope === "per_run" ? "this run" : "today";
   const unit = x.counter === "spend_usd" ? "$" : "";
@@ -960,8 +972,8 @@ function capError(check: CapCheck, runId: string): GuardErrorBody {
     cause,
     fix:
       x.scope === "per_run"
-        ? "stop and report to the user what is done and what remains; a human can raise caps.per_run in agentguard.yaml or start a new run"
-        : "stop for today and report to the user; a human can raise caps.per_day in agentguard.yaml",
+        ? `stop and report to the user what is done and what remains; a human can raise caps.per_run in ${file} or start a new run`
+        : `stop for today and report to the user; a human can raise caps.per_day in ${file}`,
     retryable: false,
     details: {
       scope: x.scope,

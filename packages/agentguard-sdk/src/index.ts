@@ -1,7 +1,7 @@
 /**
- * @agentwares/agentguard-sdk — agentguard for tool calls that bypass MCP.
+ * @agentwares/agentguard-sdk — okgate for tool calls that bypass MCP.
  *
- *   const ag = await createGuard({ policy: "agentguard.yaml" });
+ *   const ag = await createGuard({ policy: "okgate.yaml" });
  *   const tools = wrapOpenAIAgentsTools(ag, [deleteContact, sendEmail]);
  *   const openai = new OpenAI({ fetch: createGuardedFetch(ag) });   // hard spend limit on tokens
  */

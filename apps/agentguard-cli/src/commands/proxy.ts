@@ -1,12 +1,15 @@
 /**
- * `agentguard proxy` — stdio by default (what MCP clients spawn), `--http` for Streamable HTTP
+ * `okgate proxy` — stdio by default (what MCP clients spawn), `--http` for Streamable HTTP
  * with the control endpoints. Logs go to stderr only; stdout is the MCP channel.
  */
 import { existsSync } from "node:fs";
-import { dirname } from "node:path";
 import { serveStdio } from "@agentwares/mcp-kit";
-import { Guard, defaultPolicy, resolveAgent } from "@agentwares/agentguard-core";
-import { FileKillSwitch, resolvePath, type LoadedPolicy } from "@agentwares/agentguard-core/node";
+import { Guard, defaultPolicy, envTwin, resolveAgent } from "@agentwares/agentguard-core";
+import {
+  killSwitchFor,
+  resolveLoadedPolicy,
+  type LoadedPolicy,
+} from "@agentwares/agentguard-core/node";
 import { flagBool, flagNumber, flagString, type ParsedArgs } from "../args.js";
 import { createFileGuard, loadPolicyFor, policyPathFrom, type Io } from "../context.js";
 import { startHttpProxy } from "../proxy/http.js";
@@ -22,29 +25,20 @@ export function newRunId(now: Date = new Date()): string {
 }
 
 /**
- * The policy agentguard runs on when no `agentguard.yaml` exists and none was named: the
+ * The policy okgate runs on when no `okgate.yaml` exists and none was named: the
  * defaults, no upstreams, paths resolved where the file would be. It is what an install button
  * or a registry install starts before `init` has run. Nothing is written for it: the guard built
- * on it keeps counters, audit and approvals in memory, so the proxy leaves no `.agentguard/` in
+ * on it keeps counters, audit and approvals in memory, so the proxy leaves no `.okgate/` in
  * whatever directory the client spawned it in.
  *
  * `undefined` when a policy file exists, or when one was named with `--config` or
- * `AGENTGUARD_CONFIG` — a named file that is missing is still an error.
+ * `OKGATE_CONFIG` / `AGENTGUARD_CONFIG` — a named file that is missing is still an error.
  */
 export function unconfiguredPolicy(args: ParsedArgs, io: Io): LoadedPolicy | undefined {
-  if (flagString(args, "config") !== undefined || io.env.AGENTGUARD_CONFIG) return undefined;
+  if (flagString(args, "config") !== undefined || envTwin(io.env, "CONFIG")) return undefined;
   const path = policyPathFrom(args, io);
   if (existsSync(path)) return undefined;
-  const policy = defaultPolicy();
-  const baseDir = dirname(path);
-  return {
-    policy,
-    path,
-    baseDir,
-    stateDir: resolvePath(policy.state.dir, baseDir),
-    auditPath: resolvePath(policy.audit.path, baseDir),
-    killPath: resolvePath(policy.kill.file, baseDir),
-  };
+  return resolveLoadedPolicy(defaultPolicy(), path, {});
 }
 
 async function serveOverStdio(runtime: ProxyRuntime): Promise<number> {
@@ -60,11 +54,11 @@ async function serveOverStdio(runtime: ProxyRuntime): Promise<number> {
 }
 
 export async function proxyCommand(args: ParsedArgs, io: Io): Promise<number> {
-  const log = (line: string): void => io.err(`[agentguard] ${line}`);
+  const log = (line: string): void => io.err(`[okgate] ${line}`);
   const modeOverride = flagString(args, "mode");
   const http = flagBool(args, "http") === true;
 
-  // No policy file and none named: serve agentguard's own read-only tools over stdio rather than
+  // No policy file and none named: serve okgate's own read-only tools over stdio rather than
   // exit, so a client that installed it from a button or a registry gets a working server that
   // says how to set it up. `--http` still needs a policy (it writes its control token beside it).
   const unconfigured = http ? undefined : unconfiguredPolicy(args, io);
@@ -76,7 +70,7 @@ export async function proxyCommand(args: ParsedArgs, io: Io): Promise<number> {
       guard: new Guard({
         policy: unconfigured.policy,
         env: io.env,
-        kill: new FileKillSwitch(unconfigured.killPath),
+        kill: killSwitchFor(unconfigured),
       }),
       configured: false,
       defaultRunId: flagString(args, "run-id") ?? newRunId(),
@@ -84,7 +78,7 @@ export async function proxyCommand(args: ParsedArgs, io: Io): Promise<number> {
     });
     await runtime.start();
     log(
-      `no policy file at ${unconfigured.path}: serving agentguard's own read-only tools only. To guard your MCP servers, run \`${INIT_COMMAND}\` in the project directory.`,
+      `no policy file at ${unconfigured.path}: serving okgate's own read-only tools only. To guard your MCP servers, run \`${INIT_COMMAND}\` in the project directory.`,
     );
     return serveOverStdio(runtime);
   }
@@ -98,7 +92,7 @@ export async function proxyCommand(args: ParsedArgs, io: Io): Promise<number> {
     const resolved = await resolveAgent(loaded.policy, { name: agentName });
     if (resolved.error) {
       io.err(
-        `unknown agent "${agentName}" — agents in agentguard.yaml: ${loaded.policy.agents.map((a) => a.name).join(", ") || "none"}`,
+        `unknown agent "${agentName}" — agents in okgate.yaml: ${loaded.policy.agents.map((a) => a.name).join(", ") || "none"}`,
       );
       return 1;
     }
@@ -117,7 +111,7 @@ export async function proxyCommand(args: ParsedArgs, io: Io): Promise<number> {
       if (e.type === "APPROVAL_DECIDED") return;
       log(`${e.type} ${e.tool} (run ${e.runId})${e.error ? `: ${e.error.cause}` : ""}`);
       if (e.type === "APPROVAL_REQUIRED" && e.approval)
-        log(`approve with: agentguard approve ${e.approval.id}`);
+        log(`approve with: okgate approve ${e.approval.id}`);
     },
   });
   const runtime = new ProxyRuntime({
@@ -130,12 +124,10 @@ export async function proxyCommand(args: ParsedArgs, io: Io): Promise<number> {
   await runtime.start();
   const killed = await fileGuard.kill.check();
   if (killed.killed)
-    log(
-      `kill switch is ON (${killed.reason}); every call returns KILLED until \`agentguard resume\``,
-    );
+    log(`kill switch is ON (${killed.reason}); every call returns KILLED until \`okgate resume\``);
   if (runtime.upstreamStatus().length === 0)
     log(
-      `${loaded.path} lists no upstreams: serving agentguard's own read-only tools only. Add servers under \`upstreams:\` to guard them.`,
+      `${loaded.path} lists no upstreams: serving okgate's own read-only tools only. Add servers under \`upstreams:\` to guard them.`,
     );
 
   if (http) {
@@ -143,7 +135,7 @@ export async function proxyCommand(args: ParsedArgs, io: Io): Promise<number> {
       runtime,
       port: flagNumber(args, "port") ?? 8788,
       host: flagString(args, "host") ?? "127.0.0.1",
-      token: io.env.AGENTGUARD_HTTP_TOKEN,
+      token: envTwin(io.env, "HTTP_TOKEN"),
     });
     approvalBase = { baseUrl: server.url.replace(/\/mcp$/, ""), token: server.token };
     log(

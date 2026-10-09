@@ -1,6 +1,6 @@
 /**
- * `agentguard permission-diff` — which changes between two git refs widen what an agent may do
- * (agentguard.yaml, .claude/settings.json, mcp.json). The GitHub Action posts the markdown.
+ * `okgate permission-diff` — which changes between two git refs widen what an agent may do
+ * (okgate.yaml, .claude/settings.json, mcp.json). The GitHub Action posts the markdown.
  */
 import { execFileSync } from "node:child_process";
 import {
@@ -12,6 +12,9 @@ import { flagBool, flagList, flagString, type ParsedArgs } from "../args.js";
 import type { Io } from "../context.js";
 
 export const DEFAULT_PERMISSION_PATHS = [
+  "okgate.yaml",
+  "okgate.yml",
+  // the policy's name before the rename, still read when there is no okgate.yaml
   "agentguard.yaml",
   "agentguard.yml",
   ".claude/settings.json",
@@ -23,7 +26,7 @@ export const DEFAULT_PERMISSION_PATHS = [
 ];
 
 const PERMISSION_FILE =
-  /(^|\/)(agentguard[^/]*\.ya?ml|\.claude\/settings(\.local)?\.json|[^/]*mcp[^/]*\.json|claude_desktop_config\.json)$/;
+  /(^|\/)((okgate|agentguard)[^/]*\.ya?ml|\.claude\/settings(\.local)?\.json|[^/]*mcp[^/]*\.json|claude_desktop_config\.json)$/;
 
 function git(cwd: string, argv: string[]): string | undefined {
   try {

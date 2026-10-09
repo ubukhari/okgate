@@ -1,6 +1,6 @@
 /**
  * The audit's own copy of the counts, one small file per transcript group under
- * `~/.agentguard/audit-cache-v1/`, the way seatledger keeps its own (PROD-1A):
+ * `~/.okgate/audit-cache-v1/`, the way seatledger keeps its own (PROD-1A):
  *
  * 1. Speed: a group whose files are unchanged (same size and mtime) is not read again for checks
  *    it already answered.

@@ -1,8 +1,8 @@
-name: "Publish agentguard to the MCP Registry"
+name: "Publish okgate to the MCP Registry"
 
 on:
   push:
-    tags: ["agentguard-v*"]
+    tags: ["okgate-v*"]
 
 jobs:
   publish:

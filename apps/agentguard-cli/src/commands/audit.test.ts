@@ -1,5 +1,5 @@
 /**
- * `agentguard audit` end to end through `main`, on the synthetic history in
+ * `okgate audit` end to end through `main`, on the synthetic history in
  * `fixtures/audit-sessions.ts`: rule files in every format, five Claude Code sessions and a Codex
  * rollout in the repo (one older Claude session, and one session and one rollout elsewhere).
  */
@@ -30,7 +30,7 @@ let io: Io;
 const NOW = new Date();
 
 beforeEach(() => {
-  dir = realpathSync(mkdtempSync(join(tmpdir(), "agentguard-audit-")));
+  dir = realpathSync(mkdtempSync(join(tmpdir(), "okgate-audit-")));
   repo = join(dir, "acme");
   home = join(dir, "home");
   mkdirSync(join(repo, ".git"), { recursive: true });
@@ -86,17 +86,17 @@ const byN = (rules: JsonRule[], n: number): JsonRule => rules.find((r) => r.n ==
 const sources = (a: JsonAudit, client: string) =>
   (a.sources as Record<string, { read: number; cached: number }>)[client];
 
-describe("agentguard audit", () => {
+describe("okgate audit", () => {
   it("prints, per rule, sessions broken out of sessions checked, with the latest evidence on screen", async () => {
     const { code, text } = await audit();
     expect(code).toBe(0);
     const lines = text.split("\n");
-    expect(lines[0]).toMatch(/^agentguard audit — .*acme · since \d{4}-\d{2}-\d{2}$/);
+    expect(lines[0]).toMatch(/^okgate audit — .*acme · since \d{4}-\d{2}-\d{2}$/);
     expect(text).toContain(
       "6 sessions in this repository (Claude Code 5, Codex 1). Read on this machine; nothing was sent anywhere.",
     );
     expect(text).toContain(
-      "13 rules found (6 in CLAUDE.md, 3 in AGENTS.md, 1 in GEMINI.md, 2 in .cursor/rules/release.mdc, 1 in agentguard.yaml); 11 checkable.",
+      "13 rules found (6 in CLAUDE.md, 3 in AGENTS.md, 1 in GEMINI.md, 2 in .cursor/rules/release.mdc, 1 in okgate.yaml); 11 checkable.",
     );
     expect(text).toContain(
       "no-push main — broken in 3 of 6 sessions (4 pushed); 1 refused by the harness",
@@ -113,7 +113,7 @@ describe("agentguard audit", () => {
     expect(text).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2} {2}git push origin main {2}\[refused\]/);
     expect(text).toContain("vercel env pull .env.local --token <redacted>");
     expect(text).toContain("Edit pnpm-lock.yaml");
-    expect(text).toMatch(/NOT CHECKABLE MECHANICALLY \(2\)[^\n]*\/agentguard:audit/);
+    expect(text).toMatch(/NOT CHECKABLE MECHANICALLY \(2\)[^\n]*\/okgate:audit/);
     expect(text).toContain("R9   Keep functions small.   (AGENTS.md:5)  [marked none]");
     expect(lines[lines.length - 1]).toBe(TEAM_HISTORY_LINE);
   });
@@ -160,7 +160,7 @@ describe("agentguard audit", () => {
   it("never writes transcript text to the cache or to the JSON", async () => {
     const human = (await audit()).text;
     const { text: json } = await audit("--json");
-    const cacheDir = join(home, ".agentguard", "audit-cache-v1");
+    const cacheDir = join(home, ".okgate", "audit-cache-v1");
     const cached = readdirSync(cacheDir).map((f) => readFileSync(join(cacheDir, f), "utf8"));
     expect(cached.length).toBeGreaterThan(0);
     for (const canary of AUDIT_CANARIES) {
@@ -228,7 +228,7 @@ describe("agentguard audit", () => {
 
   it("--no-cache writes nothing", async () => {
     await audit("--no-cache");
-    expect(existsSync(join(home, ".agentguard", "audit-cache-v1"))).toBe(false);
+    expect(existsSync(join(home, ".okgate", "audit-cache-v1"))).toBe(false);
   });
 
   it("matches sessions from every worktree when run inside one", async () => {
@@ -261,22 +261,22 @@ describe("agentguard audit", () => {
   });
 });
 
-describe("agentguard audit --enforce", () => {
+describe("okgate audit --enforce", () => {
   it("--preview shows the diff and writes nothing", async () => {
-    const before = readFileSync(join(repo, "agentguard.yaml"), "utf8");
+    const before = readFileSync(join(repo, "okgate.yaml"), "utf8");
     const { code, text } = await audit("--enforce", "--preview");
     expect(code).toBe(0);
     expect(text).toContain("would update");
     expect(text).toMatch(/\+ +- git push \* main # R1 CLAUDE\.md:5/);
     expect(text).toContain("Preview only: nothing was written.");
-    expect(readFileSync(join(repo, "agentguard.yaml"), "utf8")).toBe(before);
+    expect(readFileSync(join(repo, "okgate.yaml"), "utf8")).toBe(before);
     expect(existsSync(join(repo, ".claude", "settings.json"))).toBe(false);
   });
 
   it("writes the hook rules in dry-run, keeps the rest of the policy, and installs the hook", async () => {
-    const { code, text } = await audit("--enforce", "--command", "agentguard");
+    const { code, text } = await audit("--enforce", "--command", "okgate");
     expect(code).toBe(0);
-    const yaml = readFileSync(join(repo, "agentguard.yaml"), "utf8");
+    const yaml = readFileSync(join(repo, "okgate.yaml"), "utf8");
     expect(yaml).toContain("id: publish");
     expect(yaml).toMatch(/^ {2}mode: dry-run/m);
     expect(yaml).toContain("- git push * main # R1 CLAUDE.md:5");
@@ -297,35 +297,35 @@ describe("agentguard audit --enforce", () => {
       hooks: { PreToolUse: { hooks: { command: string }[] }[] };
     };
     expect(settings.hooks.PreToolUse[0]!.hooks[0]!.command).toBe(
-      "agentguard hook pre-tool-use --client claude",
+      "okgate hook pre-tool-use --client claude",
     );
     expect(text).toContain("hooks.mode is dry-run");
 
     const again = await audit("--enforce");
     expect(again.text).toContain("already has a hook rule for every enforceable rule");
-    expect(again.text).toContain("The agentguard hook is already installed");
+    expect(again.text).toContain("The okgate hook is already installed");
   });
 
   it("never adds rules that would block at once without --yes", async () => {
     const enforcing = "version: 1\nhooks:\n  mode: enforce\n";
-    writeFileSync(join(repo, "agentguard.yaml"), enforcing);
+    writeFileSync(join(repo, "okgate.yaml"), enforcing);
     const refused = await audit("--enforce");
     expect(refused.code).toBe(1);
     expect(refused.text).toContain("hooks.mode is enforce");
-    expect(readFileSync(join(repo, "agentguard.yaml"), "utf8")).toBe(enforcing);
-    const forced = await audit("--enforce", "--yes", "--command", "agentguard");
+    expect(readFileSync(join(repo, "okgate.yaml"), "utf8")).toBe(enforcing);
+    const forced = await audit("--enforce", "--yes", "--command", "okgate");
     expect(forced.code).toBe(0);
-    const yaml = readFileSync(join(repo, "agentguard.yaml"), "utf8");
+    const yaml = readFileSync(join(repo, "okgate.yaml"), "utf8");
     expect(yaml).toContain("git push * main");
     expect(yaml).toContain("mode: enforce");
   });
 
   it("writes a starter policy when there is none", async () => {
-    rmSync(join(repo, "agentguard.yaml"));
-    const { text } = await audit("--enforce", "--command", "agentguard");
+    rmSync(join(repo, "okgate.yaml"));
+    const { text } = await audit("--enforce", "--command", "okgate");
     expect(text).toContain("wrote");
-    const yaml = readFileSync(join(repo, "agentguard.yaml"), "utf8");
-    expect(yaml).toContain("# agentguard.yaml — generated by `agentguard hooks install`");
+    const yaml = readFileSync(join(repo, "okgate.yaml"), "utf8");
+    expect(yaml).toContain("# okgate.yaml — generated by `okgate hooks install`");
     expect(yaml).toContain("- git push *--force*");
   });
 });

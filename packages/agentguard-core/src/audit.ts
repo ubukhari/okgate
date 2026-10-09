@@ -47,7 +47,7 @@ export interface HookAuditInfo {
   client: string;
   /** the command, or the tool and the paths it writes (credentials masked) */
   summary: string;
-  /** what agentguard told the harness */
+  /** what okgate told the harness */
   decision: "allow" | "deny";
   /** dry-run: what enforce mode would have returned; nothing was blocked */
   would?: { code: string; cause: string };

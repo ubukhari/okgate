@@ -303,7 +303,7 @@ export interface HeuristicResult {
   reason: string;
 }
 
-/** Name-only heuristics (no policy, no annotations). Exported for `agentguard init` suggestions. */
+/** Name-only heuristics (no policy, no annotations). Exported for `okgate init` suggestions. */
 export function classifyByName(name: string): HeuristicResult {
   const tokens = tokenizeToolName(name);
   const namespace = tokens[0] ?? "";

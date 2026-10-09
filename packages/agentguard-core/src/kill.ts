@@ -1,7 +1,7 @@
 /**
  * Kill switch: any source says "halt" → every call returns `KILLED` until it is cleared.
  * Sources are composed: an in-memory flag (HTTP `/kill`, SDK `guard.kill()`), an environment
- * variable, and a file (`.agentguard/KILL`, written by `agentguard kill`).
+ * variable, and a file (`.okgate/KILL`, written by `okgate kill`).
  */
 
 export interface KillState {

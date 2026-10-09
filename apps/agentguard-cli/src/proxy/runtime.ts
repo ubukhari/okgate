@@ -137,7 +137,7 @@ export class ProxyRuntime {
     this.agent = opts.agent;
     this.defaultRunId = opts.defaultRunId;
     this.configured = opts.configured ?? true;
-    this.log = opts.log ?? ((line) => process.stderr.write(`[agentguard] ${line}\n`));
+    this.log = opts.log ?? ((line) => process.stderr.write(`[okgate] ${line}\n`));
     this.connectTimeoutMs = opts.connectTimeoutMs ?? 15_000;
     this.testClients = opts.clients ?? {};
   }
@@ -179,7 +179,7 @@ export class ProxyRuntime {
 
   private async connect(upstream: Upstream): Promise<void> {
     const client = new Client(
-      { name: "agentguard", version: cliVersion() },
+      { name: "okgate", version: cliVersion() },
       { capabilities: { sampling: {}, elicitation: {} } },
     );
     const conn: Connection = {
@@ -451,7 +451,7 @@ export class ProxyRuntime {
           throw new GuardError({
             code: "UPSTREAM_ERROR",
             cause: `upstream "${tool.upstream}" is not connected${conn?.error ? ` (${conn.error})` : ""}`,
-            fix: "check the upstream command/url in agentguard.yaml and restart the proxy",
+            fix: "check the upstream command/url in okgate.yaml and restart the proxy",
             retryable: true,
           });
         }

@@ -111,7 +111,7 @@ export function readRuleFiles(checkout: string, extra: readonly string[] = []): 
 }
 
 /**
- * `audit.rules` from agentguard.yaml, read on its own so a policy that fails for another reason
+ * `audit.rules` from okgate.yaml, read on its own so a policy that fails for another reason
  * (an unset `${VAR}`, say) does not hide them. Returns a warning instead of throwing.
  */
 export function readConfigRules(policyPath: string): { rules: ConfigRule[]; warning?: string } {

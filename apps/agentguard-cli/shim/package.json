@@ -1,0 +1,46 @@
+{
+  "name": "@agentwares/agentguard",
+  "version": "0.2.0",
+  "description": "agentguard is now okgate: this package runs @agentwares/okgate under its old name, so hooks and MCP configs that name @agentwares/agentguard keep working. Use npx @agentwares/okgate instead.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "agentguard": "./cli.js",
+    "okgate": "./cli.js"
+  },
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    }
+  },
+  "files": [
+    "cli.js",
+    "index.js",
+    "index.d.ts",
+    "notice.js",
+    "README.md"
+  ],
+  "dependencies": {
+    "@agentwares/okgate": "^0.2.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agentwares/agentguard.git",
+    "directory": "apps/agentguard-cli/shim"
+  },
+  "homepage": "https://www.npmjs.com/package/@agentwares/okgate",
+  "keywords": [
+    "agentguard",
+    "okgate",
+    "deprecated"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
+}

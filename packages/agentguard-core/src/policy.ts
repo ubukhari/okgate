@@ -1,5 +1,5 @@
 /**
- * `agentguard.yaml` — the product's UX. Parsed with zod, `${ENV}` substituted, defaults
+ * `okgate.yaml` (formerly `agentguard.yaml`) — the product's UX. Parsed with zod, `${ENV}` substituted, defaults
  * filled. Invalid files fail with `INVALID_POLICY` naming the field and the fix.
  */
 import YAML from "yaml";
@@ -80,7 +80,7 @@ export type ModelPrice = z.infer<typeof ModelPriceSchema>;
 
 /**
  * Built-in irreversible classes for hook mode. Each runs only on a genuine human turn (see
- * `hooks.irreversible`), or once after `agentguard approve`.
+ * `hooks.irreversible`), or once after `okgate approve`.
  */
 export const BUILTIN_IRREVERSIBLE = [
   "git-push",
@@ -151,7 +151,7 @@ const HooksSchema = z.object({
 export type HooksPolicy = z.infer<typeof HooksSchema>;
 
 /**
- * `audit.rules`: rules for `agentguard audit` stated explicitly, beside the ones it reads from
+ * `audit.rules`: rules for `okgate audit` stated explicitly, beside the ones it reads from
  * CLAUDE.md / AGENTS.md / GEMINI.md / .cursor/rules. `check` is one check (or a list) in the
  * grammar of `parseCheck`: `no-push main`, `run "pnpm check" before push`, `never "rm -rf /*"`.
  */
@@ -237,10 +237,11 @@ export const PolicySchema = z.object({
     .default({ tools: [], wait_s: 0, ttl_s: 3600, notify: {} }),
   kill: z
     .object({
-      file: z.string().default(".agentguard/KILL"),
-      env: z.string().default("AGENTGUARD_KILL"),
+      // node/index.ts keeps an existing `.agentguard/` in use; AGENTGUARD_KILL halts too (guard.ts)
+      file: z.string().default(".okgate/KILL"),
+      env: z.string().default("OKGATE_KILL"),
     })
-    .default({ file: ".agentguard/KILL", env: "AGENTGUARD_KILL" }),
+    .default({ file: ".okgate/KILL", env: "OKGATE_KILL" }),
   spend: z
     .object({
       tools: z.record(z.string(), SpendToolSchema).default({}),
@@ -256,16 +257,16 @@ export const PolicySchema = z.object({
   agents: z.array(AgentSchema).default([]),
   audit: z
     .object({
-      path: z.string().default(".agentguard/audit.jsonl"),
+      path: z.string().default(".okgate/audit.jsonl"),
       redact: z.boolean().default(true),
       include_results: z.boolean().default(false),
       /** truncate recorded args/results to this many characters */
       max_chars: z.number().int().positive().default(4000),
-      /** rules for `agentguard audit`, beside those in the repo's rule files */
+      /** rules for `okgate audit`, beside those in the repo's rule files */
       rules: AuditRulesSchema,
     })
     .default({
-      path: ".agentguard/audit.jsonl",
+      path: ".okgate/audit.jsonl",
       redact: true,
       include_results: false,
       max_chars: 4000,
@@ -283,7 +284,7 @@ export const PolicySchema = z.object({
         .default(["LOOP_DETECTED", "CAP_EXCEEDED", "KILLED", "APPROVAL_REQUIRED"]),
     })
     .default({ on: ["LOOP_DETECTED", "CAP_EXCEEDED", "KILLED", "APPROVAL_REQUIRED"] }),
-  state: z.object({ dir: z.string().default(".agentguard") }).default({ dir: ".agentguard" }),
+  state: z.object({ dir: z.string().default(".okgate") }).default({ dir: ".okgate" }),
   /** hook mode: the coding agent's own shell commands and file edits (Claude Code, Codex, Gemini CLI) */
   hooks: HooksSchema.default(() => ({
     mode: "dry-run" as const,
@@ -350,6 +351,8 @@ export interface LoadPolicyOptions {
   env?: Record<string, string | undefined>;
   /** keep going when `${VAR}` is unset (values become empty strings) */
   allowMissingEnv?: boolean;
+  /** the file's name, for messages (default `okgate.yaml`; a legacy `agentguard.yaml` passes its own) */
+  file?: string;
 }
 
 /** Parse a policy object (already JSON/YAML-decoded). Throws `INVALID_POLICY`. */
@@ -358,8 +361,8 @@ export function parsePolicy(raw: unknown, opts: LoadPolicyOptions = {}): Policy 
   if (missing.length > 0 && !opts.allowMissingEnv) {
     throw guardError({
       code: "INVALID_POLICY",
-      cause: `agentguard.yaml references unset environment variables: ${missing.join(", ")}`,
-      fix: `export ${missing.join(" ")} before starting agentguard, or use \${${missing[0]}:-default}`,
+      cause: `${opts.file ?? "okgate.yaml"} references unset environment variables: ${missing.join(", ")}`,
+      fix: `export ${missing.join(" ")} before starting okgate, or use \${${missing[0]}:-default}`,
       details: { missing },
     });
   }
@@ -370,7 +373,7 @@ export function parsePolicy(raw: unknown, opts: LoadPolicyOptions = {}): Policy 
     );
     throw guardError({
       code: "INVALID_POLICY",
-      cause: `agentguard.yaml is invalid — ${issues.join("; ")}`,
+      cause: `${opts.file ?? "okgate.yaml"} is invalid — ${issues.join("; ")}`,
       fix: "fix the listed fields (see https://github.com/agentwares/agentguard/tree/main/apps/agentguard-cli#policy)",
       details: { issues: parsed.error.issues },
     });
@@ -398,7 +401,7 @@ export function loadPolicyFromYaml(text: string, opts: LoadPolicyOptions = {}): 
   } catch (err) {
     throw guardError({
       code: "INVALID_POLICY",
-      cause: `agentguard.yaml is not valid YAML: ${err instanceof Error ? err.message : String(err)}`,
+      cause: `${opts.file ?? "okgate.yaml"} is not valid YAML: ${err instanceof Error ? err.message : String(err)}`,
       fix: "fix the YAML syntax (a YAML linter shows the line)",
     });
   }

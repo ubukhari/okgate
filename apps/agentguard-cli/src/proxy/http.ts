@@ -6,7 +6,7 @@
 import { createHttpHandler, localhostHosts, type HttpHandler } from "@agentwares/mcp-kit";
 import { writeFileSync, unlinkSync, existsSync, mkdirSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { FileKillSwitch } from "@agentwares/agentguard-core/node";
+import { killSwitchFor } from "@agentwares/agentguard-core/node";
 import type { ProxyRuntime } from "./runtime.js";
 import { createDownstreamServer, PROXY_VERSION } from "./server.js";
 
@@ -62,7 +62,7 @@ export async function startHttpProxy(opts: HttpProxyOptions): Promise<HttpProxy>
   const host = opts.host ?? "127.0.0.1";
   const path = opts.path ?? "/mcp";
   const token = opts.token ?? crypto.randomUUID().replace(/-/g, "");
-  const kill = new FileKillSwitch(runtime.loaded.killPath);
+  const kill = killSwitchFor(runtime.loaded);
 
   const holder: { mcp?: HttpHandler } = {};
   const server = createServer((req, res) => {
@@ -113,7 +113,7 @@ export async function startHttpProxy(opts: HttpProxyOptions): Promise<HttpProxy>
         const killed = await runtime.guard.killState();
         return json(res, 200, {
           ok: true,
-          name: "agentguard",
+          name: "okgate",
           version: PROXY_VERSION,
           mode: runtime.policy.mode,
           killed: killed.killed,
@@ -162,7 +162,7 @@ export async function startHttpProxy(opts: HttpProxyOptions): Promise<HttpProxy>
           return json(res, 404, {
             code: "NOT_FOUND",
             cause: `no approval ${id}`,
-            fix: "list pending approvals with `agentguard approvals`",
+            fix: "list pending approvals with `okgate approvals`",
             retryable: false,
           });
         if (req.headers.accept?.includes("text/html")) {

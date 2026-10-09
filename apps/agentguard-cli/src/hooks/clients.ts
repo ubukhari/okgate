@@ -1,5 +1,5 @@
 /**
- * Where each coding agent reads its pre-execution hooks, and the entry agentguard writes there.
+ * Where each coding agent reads its pre-execution hooks, and the entry okgate writes there.
  * Verified 7 October 2026 against:
  *
  * - Claude Code: https://code.claude.com/docs/en/hooks — `hooks.PreToolUse[]` in
@@ -16,7 +16,13 @@
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { HookClient } from "@agentwares/agentguard-core";
+import {
+  LEGACY_POLICY_FILE,
+  LEGACY_STATE_DIR,
+  POLICY_FILE,
+  STATE_DIR,
+  type HookClient,
+} from "@agentwares/agentguard-core";
 
 export type InstallScope = "project" | "user";
 
@@ -63,7 +69,7 @@ export function hookTarget(
       settingsPath: join(root, ".claude", "settings.json"),
       event: "PreToolUse",
       matcher: MATCHERS[client],
-      handler: { type: "command", command, timeout: timeoutS, statusMessage: "agentguard" },
+      handler: { type: "command", command, timeout: timeoutS, statusMessage: "okgate" },
     };
   if (client === "codex")
     return {
@@ -73,8 +79,8 @@ export function hookTarget(
       settingsPath: join(root, ".codex", "hooks.json"),
       event: "PreToolUse",
       matcher: MATCHERS[client],
-      handler: { type: "command", command, timeout: timeoutS, statusMessage: "agentguard" },
-      note: "Codex runs a new hook only after you trust it: open /hooks in Codex and trust the agentguard entry.",
+      handler: { type: "command", command, timeout: timeoutS, statusMessage: "okgate" },
+      note: "Codex runs a new hook only after you trust it: open /hooks in Codex and trust the okgate entry.",
     };
   return {
     client,
@@ -84,26 +90,36 @@ export function hookTarget(
     event: "BeforeTool",
     matcher: MATCHERS[client],
     handler: {
-      name: "agentguard",
+      name: "okgate",
       type: "command",
       command,
       timeout: timeoutS * 1000,
-      description: "agentguard: one rulebook for shell commands and file edits",
+      description: "okgate: one rulebook for shell commands and file edits",
     },
     note:
       scope === "project"
-        ? "Gemini CLI fingerprints project hooks: confirm the agentguard hook the first time it asks."
+        ? "Gemini CLI fingerprints project hooks: confirm the okgate hook the first time it asks."
         : undefined,
   };
 }
 
-/** Is this hook command one agentguard wrote? */
-export function isAgentguardHookCommand(command: unknown): boolean {
+/** Is this hook command one okgate wrote, under either name (agentguard before the rename)? */
+export function isGuardHookCommand(command: unknown): boolean {
   return (
     typeof command === "string" &&
-    /agentguard/.test(command) &&
+    /okgate|agentguard/.test(command) &&
     /\bhook\s+pre-tool-use\b/.test(command)
   );
+}
+
+/**
+ * The backup of a file okgate rewrites: `<file>.okgate-backup`, or the `<file>.agentguard-backup`
+ * an okgate-era install left, which holds the older original and so wins.
+ */
+export function backupFor(path: string): { existing?: string; next: string } {
+  const legacy = `${path}.agentguard-backup`;
+  const next = `${path}.okgate-backup`;
+  return { existing: [legacy, next].find((b) => existsSync(b)), next };
 }
 
 type Json = Record<string, unknown>;
@@ -122,12 +138,12 @@ function readSettings(path: string): Json {
     parsed = JSON.parse(text);
   } catch (err) {
     throw new Error(
-      `${path} is not valid JSON (${err instanceof Error ? err.message : String(err)}); fix it or move it aside — agentguard will not overwrite it`,
+      `${path} is not valid JSON (${err instanceof Error ? err.message : String(err)}); fix it or move it aside — okgate will not overwrite it`,
       { cause: err },
     );
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
-    throw new Error(`${path} is not a JSON object; agentguard will not overwrite it`);
+    throw new Error(`${path} is not a JSON object; okgate will not overwrite it`);
   return parsed as Json;
 }
 
@@ -138,17 +154,17 @@ function groupsOf(settings: Json, event: string): MatcherGroup[] {
   return Array.isArray(groups) ? (groups as MatcherGroup[]) : [];
 }
 
-/** The agentguard handlers currently in a settings file. */
+/** The okgate handlers currently in a settings file. */
 export function installedHandlers(target: HookTarget): Json[] {
   const settings = readSettings(target.settingsPath);
   return groupsOf(settings, target.event).flatMap((g) =>
-    (g.hooks ?? []).filter((h) => isAgentguardHookCommand(h.command)),
+    (g.hooks ?? []).filter((h) => isGuardHookCommand(h.command)),
   );
 }
 
 /**
- * Write (or update in place) the agentguard entry, keeping every other setting and hook. The
- * first change to an existing file leaves a `*.agentguard-backup` next to it.
+ * Write (or update in place) the okgate entry, keeping every other setting and hook. The
+ * first change to an existing file leaves a `*.okgate-backup` next to it (or keeps an agentguard-era `*.agentguard-backup`).
  */
 export function installHook(target: HookTarget): {
   status: "added" | "updated" | "unchanged";
@@ -160,7 +176,7 @@ export function installHook(target: HookTarget): {
     settings.hooks && typeof settings.hooks === "object" ? settings.hooks : {}
   ) as Json;
   const groups = groupsOf(settings, target.event);
-  const isOurs = (h: Json): boolean => isAgentguardHookCommand(h.command);
+  const isOurs = (h: Json): boolean => isGuardHookCommand(h.command);
   const ours = groups.flatMap((g) => (g.hooks ?? []).filter(isOurs));
   const exact = groups.some(
     (g) =>
@@ -184,15 +200,16 @@ export function installHook(target: HookTarget): {
   settings.hooks = hooks;
   let backup: string | undefined;
   if (existed) {
-    backup = `${target.settingsPath}.agentguard-backup`;
-    if (!existsSync(backup)) copyFileSync(target.settingsPath, backup);
+    const { existing, next } = backupFor(target.settingsPath);
+    backup = existing ?? next;
+    if (!existing) copyFileSync(target.settingsPath, backup);
   }
   mkdirSync(dirname(target.settingsPath), { recursive: true });
   writeFileSync(target.settingsPath, JSON.stringify(settings, null, 2) + "\n");
   return { status, backup };
 }
 
-/** Remove agentguard's entries; other hooks and settings stay. Returns how many were removed. */
+/** Remove okgate's entries; other hooks and settings stay. Returns how many were removed. */
 export function uninstallHook(target: HookTarget): number {
   if (!existsSync(target.settingsPath)) return 0;
   const settings = readSettings(target.settingsPath);
@@ -200,7 +217,7 @@ export function uninstallHook(target: HookTarget): number {
   let removed = 0;
   const kept: MatcherGroup[] = [];
   for (const group of groups) {
-    const others = (group.hooks ?? []).filter((h) => !isAgentguardHookCommand(h.command));
+    const others = (group.hooks ?? []).filter((h) => !isGuardHookCommand(h.command));
     removed += (group.hooks ?? []).length - others.length;
     if (others.length > 0) kept.push({ ...group, hooks: others });
   }
@@ -225,6 +242,9 @@ export function hookSettingsFiles(where: { cwd: string; home: string }): string[
       join(root, ".gemini", "settings.json"),
     );
   }
-  out.push(join(where.home, ".agentguard", "agentguard.yaml"));
+  out.push(
+    join(where.home, STATE_DIR, POLICY_FILE),
+    join(where.home, LEGACY_STATE_DIR, LEGACY_POLICY_FILE),
+  );
   return out;
 }

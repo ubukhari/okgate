@@ -1,6 +1,6 @@
 # @agentwares/agentguard-core
 
-The policy engine behind [`agentguard`](https://github.com/agentwares/agentguard/tree/main/apps/agentguard-cli#readme) (MCP proxy) and [`@agentwares/agentguard-sdk`](https://github.com/agentwares/agentguard/tree/main/packages/agentguard-sdk#readme) (middleware). Web-standard (`crypto.subtle`, no `fs`) so the same engine runs on Node, Workers and the hosted tier; Node file stores live under `@agentwares/agentguard-core/node`.
+The policy engine behind [`okgate`](https://github.com/agentwares/agentguard/tree/main/apps/agentguard-cli#readme) (MCP proxy) and [`@agentwares/agentguard-sdk`](https://github.com/agentwares/agentguard/tree/main/packages/agentguard-sdk#readme) (middleware). Web-standard (`crypto.subtle`, no `fs`) so the same engine runs on Node, Workers and the hosted tier; Node file stores live under `@agentwares/agentguard-core/node`.
 
 ```ts
 import { Guard, loadPolicyFromYaml } from "@agentwares/agentguard-core";
@@ -19,7 +19,7 @@ const result = await guard.run(
 
 `Guard.run` applies, in order: kill switch → agent scope (allow/deny/upstreams) → classification (policy patterns → MCP annotations → verb heuristics; `unknown` is a write in enforce) → approvals (`APPROVAL_REQUIRED` bound to tool + args hash, consumed once) → semantic loop breaker (normalized args; repeats and A→B→A→B cycles) → per-run / per-day caps (counts and dollars) → dry-run synthesis from `outputSchema` or execute → spend accounting from results → hash-chained audit entry → `onEvent` for alerts.
 
-Modules: `policy` (zod schema, `${ENV}` substitution, defaults), `classify`, `loop`, `caps`, `spend` (argument rules, result fields, LLM list prices), `dryrun`, `audit` (`ChainWriter`, `verifyChain`), `kill`, `approvals`, `scope` (agent keys), `report` (`buildReport`, `renderReportMarkdown`, `renderMutationDiff`), `permission-diff` (`agentguard.yaml`, `.claude/settings.json`, `mcp.json`). Stores are interfaces (`StateStore`, `AuditSink`, `KillSwitch`, `ApprovalStore`) with memory implementations here and file implementations in `./node` (`FileStateStore`, `FileAuditSink`, `FileKillSwitch`, `FileApprovalStore`, `loadPolicyFile`, `verifyAuditFile`).
+Modules: `policy` (zod schema, `${ENV}` substitution, defaults), `classify`, `loop`, `caps`, `spend` (argument rules, result fields, LLM list prices), `dryrun`, `audit` (`ChainWriter`, `verifyChain`), `kill`, `approvals`, `scope` (agent keys), `report` (`buildReport`, `renderReportMarkdown`, `renderMutationDiff`), `permission-diff` (`okgate.yaml`, `.claude/settings.json`, `mcp.json`). Stores are interfaces (`StateStore`, `AuditSink`, `KillSwitch`, `ApprovalStore`) with memory implementations here and file implementations in `./node` (`FileStateStore`, `FileAuditSink`, `FileKillSwitch`, `FileApprovalStore`, `loadPolicyFile`, `verifyAuditFile`).
 
 Audit entries: `{ seq, ts, run_id, agent?, upstream?, tool, class, verb, mode, outcome, error?, args_hash, args (redacted), result_hash?, mutation?, usd?, counters?, latency_ms?, reason, hook?, prev_hash, hash }` with `hash = sha256(prev_hash + canonical(entry))`.
 
@@ -32,7 +32,7 @@ transcript entry a person typed (`classifyTranscriptEntry` documents the rules),
 denials → approvals → loop breaker → caps → audit without executing anything. `hooks.mode:
 dry-run` allows everything but a kill switch and records what enforce would have refused.
 
-Rule adherence (what `agentguard audit` runs): `extractRules` lists the rules in CLAUDE.md /
+Rule adherence (what `okgate audit` runs): `extractRules` lists the rules in CLAUDE.md /
 AGENTS.md / GEMINI.md / `.cursor/rules` text and maps the checkable ones to `CheckSpec`s (a
 pattern library, `CHECK_PATTERNS`; or an inline `<!-- agentguard: <check> -->`; or `audit.rules`
 in the policy; grammar in `parseCheck` / `formatCheck`). `ClaudeCodeAuditReader` and

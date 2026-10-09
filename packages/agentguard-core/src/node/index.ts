@@ -18,7 +18,8 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import YAML from "yaml";
 import {
   ChainWriter,
   GENESIS_HASH,
@@ -32,6 +33,7 @@ import {
 import type { ApprovalRecord, ApprovalStatus, ApprovalStore } from "../approvals.js";
 import type { KillState, KillSwitch } from "../kill.js";
 import { guardError } from "../errors.js";
+import { LEGACY_STATE_DIR, POLICY_FILE, POLICY_FILES, STATE_DIR } from "../names.js";
 import { loadPolicyFromYaml, type LoadPolicyOptions, type Policy } from "../policy.js";
 import type { StateStore } from "../state.js";
 
@@ -189,31 +191,53 @@ export async function verifyAuditFile(path: string): Promise<VerifyResult> {
   return verifyChain(readAuditFile(path));
 }
 
-/** `.agentguard/KILL` — presence means halt. The file body is the reason. */
+/**
+ * `.okgate/KILL` (or `.agentguard/KILL`) — presence means halt. The file body is the reason.
+ *
+ * `also` are more KILL files that halt as well: beside a policy, both product names' defaults,
+ * so a KILL file written by an agentguard-era CLI still stops an okgate one and the other way
+ * round. `kill()` writes `path` and each of `also` whose directory exists; `resume()` clears all.
+ */
 export class FileKillSwitch implements KillSwitch {
-  constructor(readonly path: string) {}
-  check(): KillState {
-    if (!existsSync(this.path)) return { killed: false };
-    let reason = "KILL file present";
-    let at: string | undefined;
-    try {
-      // The file is `<reason>\n<written at>\n`; the reason is the first line only, so it stays
-      // one line inside the KILLED error the agent reads.
-      const body = readFileSync(this.path, "utf8").split("\n")[0]?.trim();
-      if (body) reason = body.slice(0, 200);
-      at = statSync(this.path).mtime.toISOString();
-    } catch {
-      // unreadable is still killed
-    }
-    return { killed: true, reason, source: `file ${this.path}`, at };
+  readonly also: string[];
+  constructor(
+    readonly path: string,
+    also: readonly string[] = [],
+  ) {
+    this.also = [...new Set(also.map((p) => resolve(p)))].filter((p) => p !== resolve(path));
   }
-  kill(reason = "agentguard kill"): void {
+  check(): KillState {
+    for (const file of [this.path, ...this.also]) {
+      if (!existsSync(file)) continue;
+      let reason = "KILL file present";
+      let at: string | undefined;
+      try {
+        // The file is `<reason>\n<written at>\n`; the reason is the first line only, so it stays
+        // one line inside the KILLED error the agent reads.
+        const body = readFileSync(file, "utf8").split("\n")[0]?.trim();
+        if (body) reason = body.slice(0, 200);
+        at = statSync(file).mtime.toISOString();
+      } catch {
+        // unreadable is still killed
+      }
+      return { killed: true, reason, source: `file ${file}`, at };
+    }
+    return { killed: false };
+  }
+  kill(reason = "okgate kill"): void {
+    const body = `${reason}\n${new Date().toISOString()}\n`;
     ensureDir(dirname(this.path));
-    writeFileSync(this.path, `${reason}\n${new Date().toISOString()}\n`);
+    writeFileSync(this.path, body);
+    for (const file of this.also) if (existsSync(dirname(file))) writeFileSync(file, body);
   }
   resume(): void {
-    if (existsSync(this.path)) unlinkSync(this.path);
+    for (const file of [this.path, ...this.also]) if (existsSync(file)) unlinkSync(file);
   }
+}
+
+/** The KILL switch for a loaded policy: its own file plus both product names' defaults. */
+export function killSwitchFor(loaded: LoadedPolicy): FileKillSwitch {
+  return new FileKillSwitch(loaded.killPath, loaded.alsoKillPaths ?? []);
 }
 
 /** One JSON file per approval in `<dir>/approvals/`. */
@@ -282,27 +306,89 @@ export interface LoadedPolicy {
   stateDir: string;
   auditPath: string;
   killPath: string;
+  /** more KILL files that halt too (see FileKillSwitch); absent on a hand-built LoadedPolicy */
+  alsoKillPaths?: string[];
 }
 
-/** Read and parse `agentguard.yaml`; resolves state/audit/kill paths relative to the file. */
+/**
+ * The policy file in `dir`: `okgate.yaml`, else an existing `agentguard.yaml` (the name before
+ * the rename), else the `okgate.yaml` path to create.
+ */
+export function findPolicyFile(dir: string): string {
+  for (const name of POLICY_FILES) {
+    const candidate = join(dir, name);
+    if (existsSync(candidate)) return candidate;
+  }
+  return join(dir, POLICY_FILE);
+}
+
+/**
+ * The state directory a policy gets when it names none: `.okgate`, unless only an
+ * `.agentguard/` exists beside it. Then that one, so its counters, pending approvals and audit
+ * hash chain carry on across the rename instead of starting again somewhere new.
+ */
+export function defaultStateDir(baseDir: string): string {
+  return !existsSync(join(baseDir, STATE_DIR)) && existsSync(join(baseDir, LEGACY_STATE_DIR))
+    ? LEGACY_STATE_DIR
+    : STATE_DIR;
+}
+
+function explicitPath(raw: unknown, section: string, key: string): boolean {
+  if (!raw || typeof raw !== "object") return false;
+  const block = (raw as Record<string, unknown>)[section];
+  return Boolean(
+    block && typeof block === "object" && (block as Record<string, unknown>)[key] !== undefined,
+  );
+}
+
+/**
+ * Resolve a parsed policy's paths. `raw` is the decoded file (before defaults), which says which
+ * of `state.dir`, `audit.path` and `kill.file` the person wrote; the rest follow
+ * {@link defaultStateDir}.
+ */
+export function resolveLoadedPolicy(policy: Policy, path: string, raw: unknown): LoadedPolicy {
+  const abs = resolve(path);
+  const baseDir = dirname(abs);
+  const dir = defaultStateDir(baseDir);
+  if (dir !== STATE_DIR) {
+    if (!explicitPath(raw, "state", "dir")) policy.state.dir = dir;
+    if (!explicitPath(raw, "audit", "path")) policy.audit.path = `${dir}/audit.jsonl`;
+    if (!explicitPath(raw, "kill", "file")) policy.kill.file = `${dir}/KILL`;
+  }
+  const killPath = resolvePath(policy.kill.file, baseDir);
+  return {
+    policy,
+    path: abs,
+    baseDir,
+    stateDir: resolvePath(policy.state.dir, baseDir),
+    auditPath: resolvePath(policy.audit.path, baseDir),
+    killPath,
+    alsoKillPaths: [STATE_DIR, LEGACY_STATE_DIR]
+      .map((d) => join(baseDir, d, "KILL"))
+      .filter((p) => p !== killPath),
+  };
+}
+
+/**
+ * Read and parse `okgate.yaml` (or `agentguard.yaml`); resolves state/audit/kill paths relative
+ * to the file.
+ */
 export function loadPolicyFile(path: string, opts: LoadPolicyOptions = {}): LoadedPolicy {
   const abs = resolve(path);
   if (!existsSync(abs)) {
     throw guardError({
       code: "INVALID_POLICY",
-      cause: `no policy file at ${abs} — run \`agentguard init\` to generate one, or pass --config <path>`,
-      fix: "run `agentguard init` in the directory with your agent's MCP config",
+      cause: `no policy file at ${abs} — run \`okgate init\` to generate one, or pass --config <path>`,
+      fix: "run `okgate init` in the directory with your agent's MCP config",
     });
   }
-  const policy = loadPolicyFromYaml(readFileSync(abs, "utf8"), { env: process.env, ...opts });
-  const baseDir = dirname(abs);
-  const stateDir = resolvePath(policy.state.dir, baseDir);
-  return {
-    policy,
-    path: abs,
-    baseDir,
-    stateDir,
-    auditPath: resolvePath(policy.audit.path, baseDir),
-    killPath: resolvePath(policy.kill.file, baseDir),
-  };
+  const text = readFileSync(abs, "utf8");
+  const policy = loadPolicyFromYaml(text, { env: process.env, file: basename(abs), ...opts });
+  let raw: unknown;
+  try {
+    raw = YAML.parse(text);
+  } catch {
+    raw = undefined; // loadPolicyFromYaml already accepted it
+  }
+  return resolveLoadedPolicy(policy, abs, raw);
 }

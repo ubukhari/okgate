@@ -1,0 +1,27 @@
+{
+  "name": "okgate",
+  "version": "0.1.10",
+  "description": "Put okgate, an MCP policy proxy, in front of this project's MCP servers: a dry-run first, then spend caps, approvals for destructive tools, a kill switch and a hash-chained audit log. And check which rules in CLAUDE.md / AGENTS.md your coding agents broke, from your own sessions. Runs npx -p @agentwares/agentguard okgate on your machine; no account, no LLM calls.",
+  "author": {
+    "name": "agentwares",
+    "url": "https://github.com/agentwares"
+  },
+  "homepage": "https://agentwares-agentguard.vercel.app",
+  "documentationUrl": "https://github.com/agentwares/agentguard#readme",
+  "repository": "https://github.com/agentwares/agentguard",
+  "privacyPolicyUrl": "https://github.com/agentwares/agentguard/blob/main/apps/agentguard-cli/PRIVACY.md",
+  "termsOfServiceUrl": "https://agentwares-agentguard.vercel.app/terms",
+  "supportUrl": "https://agentwares.vercel.app/contact",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "mcp-proxy",
+    "mcp-gateway",
+    "mcp-security",
+    "human-in-the-loop",
+    "dry-run",
+    "spend-limit",
+    "kill-switch",
+    "audit-log"
+  ]
+}

@@ -1,6 +1,7 @@
 /**
- * @agentwares/agentguard-core — the policy engine behind `agentguard` (MCP proxy) and
- * `@agentwares/agentguard-sdk` (middleware). Web-standard; Node stores live in `./node`.
+ * @agentwares/agentguard-core — the policy engine behind `okgate` (MCP proxy and coding-agent
+ * hooks; formerly okgate) and `@agentwares/agentguard-sdk` (middleware). Web-standard; Node
+ * stores live in `./node`.
  */
 export {
   GUARD_ERROR_CODES,
@@ -12,6 +13,28 @@ export {
   type GuardErrorCode,
   type GuardErrorInit,
 } from "./errors.js";
+export {
+  ENV_PREFIX,
+  KILL_ENV,
+  LEGACY_ENV_PREFIX,
+  LEGACY_KILL_ENV,
+  LEGACY_POLICY_FILE,
+  LEGACY_PRODUCT,
+  LEGACY_STATE_DIR,
+  LEGACY_TOOL_PREFIX,
+  OLD_NAMES_UNTIL,
+  POLICY_FILE,
+  POLICY_FILES,
+  PRODUCT,
+  STATE_DIR,
+  TOOL_PREFIX,
+  envTwin,
+  envTwinName,
+  oldNamesAccepted,
+  renamedToolName,
+  resolveToolName,
+  type ToolNameResolution,
+} from "./names.js";
 export {
   firstMatch,
   firstPathMatch,

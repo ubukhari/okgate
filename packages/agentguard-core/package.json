@@ -1,7 +1,7 @@
 {
   "name": "@agentwares/agentguard-core",
-  "version": "0.1.5",
-  "description": "Policy engine behind agentguard: spend caps, destructive-action gating with approvals, kill switch, scoped agent keys, dry-run writes, semantic loop breaker, blast-radius caps, a hash-chained audit log, hook mode for coding agents (shell commands, file edits, irreversible commands only on a human turn), and rule-adherence checks for CLAUDE.md / AGENTS.md rules over coding-agent transcripts. Web-standard core, Node stores under ./node.",
+  "version": "0.1.6",
+  "description": "Policy engine behind okgate (formerly agentguard): spend caps, destructive-action gating with approvals, kill switch, scoped agent keys, dry-run writes, semantic loop breaker, blast-radius caps, a hash-chained audit log, hook mode for coding agents (shell commands, file edits, irreversible commands only on a human turn), and rule-adherence checks for CLAUDE.md / AGENTS.md rules over coding-agent transcripts. Web-standard core, Node stores under ./node.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -30,6 +30,7 @@
     "directory": "packages/agentguard-core"
   },
   "keywords": [
+    "okgate",
     "agentguard",
     "mcp",
     "ai-agents",

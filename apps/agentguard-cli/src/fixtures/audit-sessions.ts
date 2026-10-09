@@ -1,5 +1,5 @@
 /**
- * A synthetic history for `agentguard audit`: rule files in every format it reads, and Claude
+ * A synthetic history for `okgate audit`: rule files in every format it reads, and Claude
  * Code and Codex transcripts in the shapes those clients write (verified on 7 Oct 2026, structure
  * only), with known kept and broken rules. Every prompt, command and path here is made up; the
  * CANARY strings let a test prove none of them reaches the cache or the JSON.
@@ -92,7 +92,7 @@ export function writeSyntheticAuditHistory(opts: SyntheticAuditOptions): Synthet
   writeFileSync(join(repo, "AGENTS.md"), AGENTS_MD);
   writeFileSync(join(repo, "GEMINI.md"), GEMINI_MD);
   writeFileSync(join(repo, ".cursor", "rules", "release.mdc"), CURSOR_RULE);
-  writeFileSync(join(repo, "agentguard.yaml"), POLICY);
+  writeFileSync(join(repo, "okgate.yaml"), POLICY);
 
   const project = join(opts.claudeDir, repo.replace(/[^a-zA-Z0-9]/g, "-"));
   mkdirSync(project, { recursive: true });

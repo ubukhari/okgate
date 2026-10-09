@@ -1,5 +1,5 @@
 /**
- * `agentguard connect <key>` — point this machine's MCP client at a hosted agentguard proxy.
+ * `okgate connect <key>` — point this machine's MCP client at a hosted okgate proxy.
  *
  * The OSS CLI enforces policy locally and needs no account. The hosted tiers move that
  * enforcement server-side, so "connecting" is not an install: it is resolving a key to the
@@ -15,12 +15,14 @@ import {
   describeConfigPath,
   detectClientConfigs,
   isGeminiConfig,
+  LEGACY_PROXY_SERVER_NAME,
   mergeServerIntoConfig,
   PROXY_SERVER_NAME,
   type ClientConfigFile,
   type ServerEntry,
 } from "../configs.js";
 import { homeFrom, type Io } from "../context.js";
+import { envTwin } from "@agentwares/agentguard-core";
 
 export const DEFAULT_PROXY_URL = "https://agentwares-agentguard-proxy.vercel.app";
 
@@ -54,16 +56,16 @@ export async function connectCommand(
   io: Io,
   fetchImpl: typeof fetch = fetch,
 ): Promise<number> {
-  const key = args.positionals[0] ?? io.env.AGENTGUARD_KEY;
+  const key = args.positionals[0] ?? envTwin(io.env, "KEY");
   if (!key) {
-    io.err("usage: agentguard connect <key> [--write] [--client <path>] [--url <proxy-url>]");
+    io.err("usage: okgate connect <key> [--write] [--client <path>] [--url <proxy-url>]");
     io.err("  the key is on your dashboard; it starts with agk_");
     return 2;
   }
 
   const base = (
     flagString(args, "url") ??
-    io.env.AGENTGUARD_PROXY_URL ??
+    envTwin(io.env, "PROXY_URL") ??
     DEFAULT_PROXY_URL
   ).replace(/\/+$/, "");
 
@@ -92,7 +94,7 @@ export async function connectCommand(
     fail({
       code: "PROXY_BAD_RESPONSE",
       cause: `${base}/connect returned ${res.status} that was not JSON: ${text.slice(0, 200)}`,
-      fix: "check --url points at an agentguard proxy, not at the dashboard",
+      fix: "check --url points at an okgate proxy, not at the dashboard",
       retryable: false,
     });
   }
@@ -113,11 +115,13 @@ export async function connectCommand(
   }
 
   const rel = (p: string) => (p.startsWith(io.cwd + "/") ? relative(io.cwd, p) : p);
-  const entry = conn.mcpServers[PROXY_SERVER_NAME] ?? {
-    type: "http",
-    url: conn.mcpUrl,
-    headers: conn.headers,
-  };
+  // a proxy deployed before the rename answers under the old key
+  const entry = conn.mcpServers[PROXY_SERVER_NAME] ??
+    conn.mcpServers[LEGACY_PROXY_SERVER_NAME] ?? {
+      type: "http",
+      url: conn.mcpUrl,
+      headers: conn.headers,
+    };
 
   if (!flagBool(args, "write")) {
     io.out(JSON.stringify({ mcpServers: { [PROXY_SERVER_NAME]: entry } }, null, 2));
@@ -149,7 +153,9 @@ export async function connectCommand(
       const forClient: ServerEntry = isGeminiConfig(c)
         ? { httpUrl: entry.url, ...(entry.headers ? { headers: entry.headers } : {}) }
         : entry;
-      const { backup, replaced } = mergeServerIntoConfig(c, PROXY_SERVER_NAME, forClient);
+      const { backup, replaced } = mergeServerIntoConfig(c, PROXY_SERVER_NAME, forClient, [
+        LEGACY_PROXY_SERVER_NAME,
+      ]);
       io.out(
         `${replaced ? "updated" : "wrote  "} ${rel(c.path)} (${c.label}) → ${PROXY_SERVER_NAME} = ${conn.mcpUrl}`,
       );

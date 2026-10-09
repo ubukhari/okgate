@@ -1,6 +1,6 @@
 /**
- * agentguard's own tools: what an MCP client sees when the proxy has no upstream servers. That is
- * the proxy started with no `agentguard.yaml` at all (an "Add to Cursor" button, a registry
+ * okgate's own tools: what an MCP client sees when the proxy has no upstream servers. That is
+ * the proxy started with no `okgate.yaml` at all (an "Add to Cursor" button, a registry
  * install, a Glama build) or with a policy that lists none.
  *
  * Three read-only answers: status, a run's report and a verify of the audit log. They call no
@@ -14,6 +14,7 @@ import {
   listRuns,
   parseAuditJsonl,
   renderReportMarkdown,
+  resolveToolName,
   verifyChain,
   type AuditEntry,
   type Caps,
@@ -21,9 +22,10 @@ import {
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
+import { RUN } from "../install.js";
 import type { ProxyRuntime } from "./runtime.js";
 
-export const INIT_COMMAND = "npx -y @agentwares/agentguard init";
+export const INIT_COMMAND = `${RUN} init`;
 
 const READ_ONLY = {
   readOnlyHint: true,
@@ -61,7 +63,7 @@ function unreadable(path: string, error: string): Error {
   return toolError({
     code: "AUDIT_UNREADABLE",
     cause: `the audit log at ${path} could not be read: ${error}`,
-    fix: "call agentguard_verify_audit_log to see where it breaks; a hand-edited or truncated line has to be restored from a copy",
+    fix: "call okgate_verify_audit_log to see where it breaks; a hand-edited or truncated line has to be restored from a copy",
     retryable: false,
   });
 }
@@ -74,18 +76,16 @@ function numbers(caps: Caps): Record<string, number> {
 
 function nextStep(runtime: ProxyRuntime): string {
   if (!runtime.configured)
-    return `agentguard is guarding nothing: no policy file at ${runtime.loaded.path}. Run \`${INIT_COMMAND}\` in the project directory: it writes agentguard.yaml in dry-run mode and routes the project's MCP servers through agentguard (backup kept, \`--undo\` restores). Then restart the MCP client.`;
+    return `okgate is guarding nothing: no policy file at ${runtime.loaded.path}. Run \`${INIT_COMMAND}\` in the project directory: it writes okgate.yaml in dry-run mode and routes the project's MCP servers through okgate (backup kept, \`--undo\` restores). Then restart the MCP client.`;
   if (runtime.policy.upstreams.length === 0)
-    return `${runtime.loaded.path} lists no upstream servers, so agentguard is guarding nothing. Add the MCP servers your agent uses under \`upstreams:\` in that file (it has commented examples), then restart the MCP client.`;
-  return "agentguard is running; run your agent, then read agentguard_get_report.";
+    return `${runtime.loaded.path} lists no upstream servers, so okgate is guarding nothing. Add the MCP servers your agent uses under \`upstreams:\` in that file (it has commented examples), then restart the MCP client.`;
+  return "okgate is running; run your agent, then read okgate_get_report.";
 }
 
 const StatusOutput = z.object({
   configured: z
     .boolean()
-    .describe(
-      "true when a policy file was found and loaded; false means agentguard guards nothing",
-    ),
+    .describe("true when a policy file was found and loaded; false means okgate guards nothing"),
   policy_path: z.string().describe("absolute path of the policy file read, or looked for"),
   mode: z
     .enum(["dry-run", "enforce"])
@@ -94,9 +94,9 @@ const StatusOutput = z.object({
     .array(
       z.object({
         name: z.string().describe("upstream name from the policy"),
-        connected: z.boolean().describe("whether agentguard is connected to it"),
+        connected: z.boolean().describe("whether okgate is connected to it"),
         tools: z.number().int().describe("tools it exposes"),
-        transport: z.enum(["stdio", "http"]).describe("how agentguard reaches it"),
+        transport: z.enum(["stdio", "http"]).describe("how okgate reaches it"),
         error: z.string().optional().describe("why it is not connected"),
       }),
     )
@@ -137,9 +137,7 @@ const StatusOutput = z.object({
 });
 
 const ReportOutput = z.object({
-  configured: z
-    .boolean()
-    .describe("false when no policy file was found (agentguard guards nothing)"),
+  configured: z.boolean().describe("false when no policy file was found (okgate guards nothing)"),
   audit_log_path: z.string().describe("absolute path of the audit log the report was built from"),
   run_id: z.string().nullable().describe("the run reported on; null when the log has no runs"),
   runs_in_log: z.number().int().describe("how many runs the audit log holds"),
@@ -173,17 +171,15 @@ const ReportOutput = z.object({
         cause: z.string().describe("why"),
       }),
     )
-    .describe("every call agentguard stopped, in order"),
+    .describe("every call okgate stopped, in order"),
   top_tools: z
     .array(z.object({ tool: z.string(), calls: z.number().int(), class: z.string() }))
     .describe("the most-called tools with their class (read, write, spend)"),
-  markdown: z.string().describe("the same report `agentguard report` prints, as Markdown"),
+  markdown: z.string().describe("the same report `okgate report` prints, as Markdown"),
 });
 
 const VerifyOutput = z.object({
-  configured: z
-    .boolean()
-    .describe("false when no policy file was found (agentguard guards nothing)"),
+  configured: z.boolean().describe("false when no policy file was found (okgate guards nothing)"),
   path: z.string().describe("absolute path of the audit log checked"),
   exists: z.boolean().describe("false when no call has been recorded yet; an absent log verifies"),
   ok: z.boolean().describe("true when every entry's hash and prev_hash recompute"),
@@ -200,13 +196,13 @@ const VerifyOutput = z.object({
 
 export function createOwnTools(runtime: ProxyRuntime) {
   const status = defineTool({
-    name: "agentguard_get_status",
-    title: "agentguard status",
+    name: "okgate_get_status",
+    title: "okgate status",
     description:
-      "Report what agentguard is guarding right now: the policy file it loaded (or that none was found), dry-run or enforce mode, each upstream MCP server and whether it connected, a run's cap usage and remaining budget, the kill switch, and pending approvals. Call it first to learn whether agentguard is set up; next_step says what to do when it is not. For what a run did, use agentguard_get_report; to check the log was not edited, agentguard_verify_audit_log. Reads local files only and changes nothing.",
+      "Report what okgate is guarding right now: the policy file it loaded (or that none was found), dry-run or enforce mode, each upstream MCP server and whether it connected, a run's cap usage and remaining budget, the kill switch, and pending approvals. Call it first to learn whether okgate is set up; next_step says what to do when it is not. For what a run did, use okgate_get_report; to check the log was not edited, okgate_verify_audit_log. Reads local files only and changes nothing.",
     input: z.strictObject({ run_id: runIdInput }),
     output: StatusOutput,
-    annotations: { title: "agentguard status", ...READ_ONLY },
+    annotations: { title: "okgate status", ...READ_ONLY },
     async handler({ run_id }) {
       const { loaded, guard } = runtime;
       const audit = readAudit(loaded.auditPath);
@@ -236,13 +232,13 @@ export function createOwnTools(runtime: ProxyRuntime) {
   });
 
   const report = defineTool({
-    name: "agentguard_get_report",
-    title: "agentguard run report",
+    name: "okgate_get_report",
+    title: "okgate run report",
     description:
-      "Summarize one run from agentguard's audit log: how many tool calls, what dry-run mode faked (records it would have created, updated or deleted, messages sent, dollars spent), what really ran upstream, and every call agentguard halted with its code and cause. Defaults to the most recent run. Use it after an agent run, before switching a policy from dry-run to enforce; for live caps and the kill switch use agentguard_get_status. Read-only: reads the audit file and does not record this call.",
+      "Summarize one run from okgate's audit log: how many tool calls, what dry-run mode faked (records it would have created, updated or deleted, messages sent, dollars spent), what really ran upstream, and every call okgate halted with its code and cause. Defaults to the most recent run. Use it after an agent run, before switching a policy from dry-run to enforce; for live caps and the kill switch use okgate_get_status. Read-only: reads the audit file and does not record this call.",
     input: z.strictObject({ run_id: runIdInput }),
     output: ReportOutput,
-    annotations: { title: "agentguard run report", ...READ_ONLY },
+    annotations: { title: "okgate run report", ...READ_ONLY },
     handler({ run_id }) {
       const { loaded } = runtime;
       const audit = readAudit(loaded.auditPath);
@@ -267,7 +263,7 @@ export function createOwnTools(runtime: ProxyRuntime) {
       const built = buildReport(audit.entries, { runId: runId ?? undefined });
       const markdown = runId
         ? renderReportMarkdown(built)
-        : `# agentguard report\n\nNo runs recorded in ${loaded.auditPath} yet. ${nextStep(runtime)}`;
+        : `# okgate report\n\nNo runs recorded in ${loaded.auditPath} yet. ${nextStep(runtime)}`;
       return {
         configured: runtime.configured,
         audit_log_path: loaded.auditPath,
@@ -297,13 +293,13 @@ export function createOwnTools(runtime: ProxyRuntime) {
   });
 
   const verify = defineTool({
-    name: "agentguard_verify_audit_log",
-    title: "Verify agentguard audit log",
+    name: "okgate_verify_audit_log",
+    title: "Verify okgate audit log",
     description:
-      "Recompute the hash chain of agentguard's audit log (JSONL, one entry per tool call) and say whether any entry was edited, removed from the middle or reordered, naming the first broken entry. Returns the entry count and head hash; record both elsewhere, because entries cut from the end of the file still verify. Use it before trusting agentguard_get_report. Takes no arguments: it checks the log the loaded policy names. Read-only; a log that does not exist yet verifies as empty.",
+      "Recompute the hash chain of okgate's audit log (JSONL, one entry per tool call) and say whether any entry was edited, removed from the middle or reordered, naming the first broken entry. Returns the entry count and head hash; record both elsewhere, because entries cut from the end of the file still verify. Use it before trusting okgate_get_report. Takes no arguments: it checks the log the loaded policy names. Read-only; a log that does not exist yet verifies as empty.",
     input: z.strictObject({}),
     output: VerifyOutput,
-    annotations: { title: "Verify agentguard audit log", ...READ_ONLY },
+    annotations: { title: "Verify okgate audit log", ...READ_ONLY },
     async handler() {
       const { loaded } = runtime;
       const audit = readAudit(loaded.auditPath);
@@ -349,13 +345,29 @@ export function ownToolList(tools: readonly OwnTool[]): Tool[] {
   return listToolManifest(tools) as Tool[];
 }
 
+/**
+ * Run an own tool. An `okgate_*` name (the product's name before the rename) runs its
+ * `okgate_*` twin with a deprecation note in `_meta` until OLD_NAMES_UNTIL, then answers
+ * TOOL_RENAMED. tools/list shows only the new names.
+ */
 export async function callOwnTool(
   tools: readonly OwnTool[],
   name: string,
   args: unknown,
   requestId?: string,
+  now: Date = new Date(),
 ): Promise<CallToolResult | undefined> {
-  const tool = tools.find((t) => t.name === name);
+  const resolved = resolveToolName(name, (n) => tools.some((t) => t.name === n), now);
+  if (resolved.kind === "expired")
+    return {
+      isError: true,
+      content: [{ type: "text", text: JSON.stringify(resolved.error) }],
+      _meta: { httpStatus: 404 },
+    };
+  const tool = tools.find((t) => t.name === resolved.name);
   if (!tool) return undefined;
-  return tool.invoke(args, createToolContext({ requestId }));
+  const result = (await tool.invoke(args, createToolContext({ requestId }))) as CallToolResult;
+  if (resolved.kind === "renamed")
+    return { ...result, _meta: { ...result._meta, ...resolved.meta } };
+  return result;
 }

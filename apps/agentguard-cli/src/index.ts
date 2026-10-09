@@ -1,5 +1,5 @@
 /**
- * Programmatic surface of the `agentguard` CLI: run the proxy in-process, build the file-backed
+ * Programmatic surface of the `okgate` CLI: run the proxy in-process, build the file-backed
  * guard, or reuse the fixtures. The policy engine itself is `@agentwares/agentguard-core`.
  */
 export {

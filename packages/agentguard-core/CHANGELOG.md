@@ -3,6 +3,27 @@
 `@agentwares/agentguard-core`, the policy engine behind `@agentwares/agentguard` and
 `@agentwares/agentguard-sdk`. Earlier versions are described in the CLI's changelog.
 
+## 0.1.6 — 2026-10-08
+
+### Changed
+
+- **agentguard is now okgate.** Policy defaults are `.okgate/` (`state.dir`, `audit.path`,
+  `kill.file`) and `OKGATE_KILL`; messages name `okgate` and the policy file actually loaded.
+- `names.ts`: the product's names in one place (`POLICY_FILES`, `STATE_DIR`, `envTwin`,
+  `resolveToolName`, `OLD_NAMES_UNTIL`), and a `TOOL_RENAMED` error code.
+
+### Kept working
+
+- `Guard` halts on `AGENTGUARD_KILL` and `OKGATE_KILL` as well as the policy's `kill.env`.
+- `loadPolicyFile` keeps an existing `.agentguard/` (when there is no `.okgate/`) for every path
+  the policy does not name, so its hash chain continues; `findPolicyFile` reads `okgate.yaml`,
+  else `agentguard.yaml`. `FileKillSwitch` takes more KILL files that also halt
+  (`killSwitchFor(loaded)` checks both directories).
+- Hook mode refuses the agent's own `okgate`/`agentguard` approvals (including
+  `npx -p @agentwares/agentguard okgate approve`) and writes to either state directory.
+- `<!-- agentguard: … -->` inline checks, `X-Agentguard-Key`, `agentguard*.yaml` in permission
+  diffs.
+
 ## 0.1.5 — 2026-10-07
 
 ### Added

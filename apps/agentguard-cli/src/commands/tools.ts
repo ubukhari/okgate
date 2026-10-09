@@ -1,5 +1,5 @@
 /**
- * `agentguard tools` — connect to every upstream and print the tools the agent will see,
+ * `okgate tools` — connect to every upstream and print the tools the agent will see,
  * with their class and why. Also the probe `init` uses to seed the policy.
  */
 import {
@@ -119,7 +119,7 @@ export async function toolsCommand(args: ParsedArgs, io: Io): Promise<number> {
     );
   if (result.upstreams.length === 0)
     io.err(
-      "no upstreams in the policy: an MCP client sees agentguard's own read-only tools instead (agentguard_get_status, agentguard_get_report, agentguard_verify_audit_log)",
+      "no upstreams in the policy: an MCP client sees okgate's own read-only tools instead (okgate_get_status, okgate_get_report, okgate_verify_audit_log)",
     );
   for (const line of formatToolTable(result.tools)) io.out(line);
   const counts = result.tools.reduce<Record<string, number>>(

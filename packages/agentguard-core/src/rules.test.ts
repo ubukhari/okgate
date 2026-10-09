@@ -270,7 +270,7 @@ describe("extracting rules from the files people write", () => {
     ]);
   });
 
-  it("reads audit.rules from agentguard.yaml, with ids", () => {
+  it("reads audit.rules from okgate.yaml, with ids", () => {
     const { rules } = extractRules(
       [{ path: "CLAUDE.md", text: "- Keep PRs small.\n" }],
       [
@@ -282,8 +282,8 @@ describe("extracting rules from the files people write", () => {
       rules.map((r) => [r.id.replace(/#[0-9a-f]{8}$/, "#…"), r.text, r.checks.map((c) => c.via)]),
     ).toEqual([
       ["CLAUDE.md#…", "Keep PRs small.", []],
-      ["agentguard.yaml#deploys", "Only CI deploys", ["config"]],
-      ["agentguard.yaml#…", 'no-verify; never "git reset --hard*"', ["config", "config"]],
+      ["okgate.yaml#deploys", "Only CI deploys", ["config"]],
+      ["okgate.yaml#…", 'no-verify; never "git reset --hard*"', ["config", "config"]],
     ]);
   });
 

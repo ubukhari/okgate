@@ -1,7 +1,7 @@
 /**
  * From measuring to enforcing: the checks `extractRules` found, as hook-mode rules
- * (`hooks.shell.deny|approval`, `hooks.paths.deny`, `hooks.irreversible`). `agentguard audit
- * --enforce` writes this plan into agentguard.yaml in dry-run; nothing here changes
+ * (`hooks.shell.deny|approval`, `hooks.paths.deny`, `hooks.irreversible`). `okgate audit
+ * --enforce` writes this plan into okgate.yaml in dry-run; nothing here changes
  * `hooks.mode`. Checks that need the order of commands or the checked-out branch cannot be a
  * pre-execution rule and stay audit-only.
  *
@@ -193,7 +193,7 @@ export function planEnforcement(rules: readonly Rule[]): EnforcePlan {
         case "no-new-deps":
           add(spec.unlessAsked ? "hooks.shell.approval" : "hooks.shell.deny", DEP_ADD, rule, check);
           if (spec.unlessAsked)
-            note("adding a package waits for `agentguard approve <id>` (hooks.shell.approval)");
+            note("adding a package waits for `okgate approve <id>` (hooks.shell.approval)");
           break;
         case "no-rm-outside":
           plan.builtins.push({ name: "rm-outside-workspace", rule, check });
@@ -201,7 +201,7 @@ export function planEnforcement(rules: readonly Rule[]): EnforcePlan {
         case "no-publish":
           plan.builtins.push({ name: "publish", rule, check });
           note(
-            "package publish is a built-in irreversible class: it runs only on a turn a person typed that names it, or after `agentguard approve`",
+            "package publish is a built-in irreversible class: it runs only on a turn a person typed that names it, or after `okgate approve`",
           );
           break;
         case "no-deploy":

@@ -17,13 +17,13 @@ const RESPONSE = {
   band: { tier: "team", quantity: 100000 },
   dashboardUrl: "https://app.test/dashboard/proxies/px_abc123",
   mcpServers: {
-    agentguard: {
+    okgate: {
       type: "http",
       url: "https://proxy.test/px_abc123/mcp",
       headers: { Authorization: "Bearer agk_live_key" },
     },
   },
-  claudeCode: "claude mcp add --transport http agentguard https://proxy.test/px_abc123/mcp",
+  claudeCode: "claude mcp add --transport http okgate https://proxy.test/px_abc123/mcp",
 };
 
 function harness(cwd: string) {
@@ -87,9 +87,9 @@ describe("connect", () => {
       mcpServers: Record<string, unknown>;
     };
     // connect merges; it must not do what `init` does and replace the list
-    expect(Object.keys(written.mcpServers).sort()).toEqual(["agentguard", "crm"]);
-    expect(written.mcpServers.agentguard).toEqual(RESPONSE.mcpServers.agentguard);
-    expect(JSON.parse(readFileSync(`${configPath}.agentguard-backup`, "utf8"))).toEqual({
+    expect(Object.keys(written.mcpServers).sort()).toEqual(["crm", "okgate"]);
+    expect(written.mcpServers.okgate).toEqual(RESPONSE.mcpServers.okgate);
+    expect(JSON.parse(readFileSync(`${configPath}.okgate-backup`, "utf8"))).toEqual({
       mcpServers: { crm: { command: "crm-server" } },
     });
   });
@@ -103,14 +103,14 @@ describe("connect", () => {
 
     await connectCommand(args, h.io, respond(RESPONSE));
     const moved = { ...RESPONSE, mcpUrl: "https://proxy.test/px_abc123/v2/mcp" };
-    moved.mcpServers = { agentguard: { ...RESPONSE.mcpServers.agentguard, url: moved.mcpUrl } };
+    moved.mcpServers = { okgate: { ...RESPONSE.mcpServers.okgate, url: moved.mcpUrl } };
     await connectCommand(args, h.io, respond(moved));
 
     const written = JSON.parse(readFileSync(configPath, "utf8")) as {
       mcpServers: Record<string, { url: string }>;
     };
-    expect(Object.keys(written.mcpServers)).toEqual(["agentguard"]);
-    expect(written.mcpServers.agentguard!.url).toBe("https://proxy.test/px_abc123/v2/mcp");
+    expect(Object.keys(written.mcpServers)).toEqual(["okgate"]);
+    expect(written.mcpServers.okgate!.url).toBe("https://proxy.test/px_abc123/v2/mcp");
     expect(h.stdout()).toContain("updated");
   });
 
@@ -149,7 +149,7 @@ describe("connect", () => {
     const dir = mkdtempSync(join(tmpdir(), "ag-connect-"));
     const h = harness(dir);
     expect(await connectCommand(parseArgs(["connect"]), h.io, respond(RESPONSE))).toBe(2);
-    expect(h.stderr()).toContain("usage: agentguard connect <key>");
+    expect(h.stderr()).toContain("usage: okgate connect <key>");
   });
 
   it("--write into Gemini CLI's settings uses httpUrl, which Gemini dials as Streamable HTTP", async () => {
@@ -171,7 +171,7 @@ describe("connect", () => {
       mcpServers: Record<string, unknown>;
     };
     expect(written.theme).toBe("Default");
-    expect(written.mcpServers.agentguard).toEqual({
+    expect(written.mcpServers.okgate).toEqual({
       httpUrl: "https://proxy.test/px_abc123/mcp",
       headers: { Authorization: "Bearer agk_live_key" },
     });

@@ -2,6 +2,7 @@
  * `createGuard` — the policy engine for tool calls that bypass MCP. Same YAML, same caps, same
  * audit log as the proxy; file-backed when given a policy path, in-memory when given an object.
  */
+import { basename } from "node:path";
 import {
   Guard,
   GuardError,
@@ -22,14 +23,15 @@ import {
 import {
   FileApprovalStore,
   FileAuditSink,
-  FileKillSwitch,
+  type FileKillSwitch,
   FileStateStore,
+  killSwitchFor,
   loadPolicyFile,
   type LoadedPolicy,
 } from "@agentwares/agentguard-core/node";
 
 export interface CreateGuardOptions {
-  /** path to `agentguard.yaml` (file-backed state, shared with the CLI) or an inline policy (in-memory) */
+  /** path to `okgate.yaml` (file-backed state, shared with the CLI) or an inline policy (in-memory) */
   policy: string | PolicyInput | Policy;
   /** run id for calls that do not pass one (default: generated) */
   runId?: string;
@@ -223,10 +225,11 @@ export async function createGuard(opts: CreateGuardOptions): Promise<AgentGuard>
       fix: `add it under agents: or use one of ${policy.agents.map((a) => a.name).join(", ") || "(none)"}`,
     });
   const useFiles = loaded !== undefined && !opts.memory;
-  const kill = useFiles ? new FileKillSwitch(loaded!.killPath) : undefined;
+  const kill = useFiles ? killSwitchFor(loaded!) : undefined;
   const guard = new Guard({
     policy,
     env,
+    ...(loaded ? { policyFile: basename(loaded.path) } : {}),
     onEvent: opts.onEvent,
     ...(useFiles
       ? {

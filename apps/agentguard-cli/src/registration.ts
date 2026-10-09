@@ -1,7 +1,7 @@
 /**
  * Where a running HTTP proxy registers itself (`<state>/http.json`) so `kill`, `approve` and the
  * hook can find it. Kept apart from `proxy/http.ts` so reading it does not load the MCP SDK:
- * `agentguard hook pre-tool-use` runs before every guarded tool call and must start fast.
+ * `okgate hook pre-tool-use` runs before every guarded tool call and must start fast.
  */
 import { join } from "node:path";
 

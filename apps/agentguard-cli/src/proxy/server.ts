@@ -74,7 +74,8 @@ export function runIdFor(
 ): string {
   const header = headerValue(extra, "x-run-id");
   if (header && header.trim()) return header.trim().slice(0, 128);
-  const fromMeta = meta?.runId ?? meta?.["agentguard/runId"] ?? meta?.run_id;
+  const fromMeta =
+    meta?.runId ?? meta?.["okgate/runId"] ?? meta?.["agentguard/runId"] ?? meta?.run_id;
   if (typeof fromMeta === "string" && fromMeta.trim()) return fromMeta.trim().slice(0, 128);
   if (extra.sessionId) return `sess_${extra.sessionId.slice(0, 12)}`;
   return fallback;
@@ -85,17 +86,17 @@ export function toCallToolResult(
   result: GuardResult,
   tool: ExposedTool | undefined,
 ): CallToolResult {
-  const meta = {
-    agentguard: {
-      class: result.decision.classification.class,
-      verb: result.decision.classification.verb,
-      mode: result.decision.mode,
-      outcome: result.outcome,
-      dryRun: result.faked,
-      seq: result.entry.seq,
-      run_id: result.entry.run_id,
-    },
+  const verdict = {
+    class: result.decision.classification.class,
+    verb: result.decision.classification.verb,
+    mode: result.decision.mode,
+    outcome: result.outcome,
+    dryRun: result.faked,
+    seq: result.entry.seq,
+    run_id: result.entry.run_id,
   };
+  // `okgate` is the same object under the name before the rename, for 90 days
+  const meta = { okgate: verdict, agentguard: verdict };
   const hasOutputSchema = Boolean(tool?.tool.outputSchema);
   if (result.error) {
     const upstream = result.value as CallToolResult | undefined;
@@ -151,7 +152,7 @@ export function annotateTool(t: ExposedTool, mode: string): Tool {
     name: t.name,
     _meta: {
       ...(t.tool._meta ?? {}),
-      agentguard: {
+      okgate: {
         upstream: t.upstream,
         class: t.classification.class,
         verb: t.classification.verb,
@@ -163,7 +164,7 @@ export function annotateTool(t: ExposedTool, mode: string): Tool {
 
 function killedError(state: { reason?: string; source?: string }): Error {
   return Object.assign(
-    new Error(`agentguard kill switch is on (${state.source ?? "?"}: ${state.reason ?? ""})`),
+    new Error(`okgate kill switch is on (${state.source ?? "?"}: ${state.reason ?? ""})`),
     { code: -32000 },
   );
 }
@@ -171,10 +172,10 @@ function killedError(state: { reason?: string; source?: string }): Error {
 /** What the client is told about this server, which depends on whether it fronts anything. */
 export function serverInstructions(runtime: ProxyRuntime): string {
   if (ownToolsActive(runtime))
-    return `agentguard is an MCP policy proxy, and this one fronts no upstream MCP servers${
+    return `okgate is an MCP policy proxy, and this one fronts no upstream MCP servers${
       runtime.configured ? "" : ` (no policy file at ${runtime.loaded.path})`
-    }, so it serves only its own read-only tools: agentguard_get_status (what it guards, caps, kill switch), agentguard_get_report (what a run did or would have done) and agentguard_verify_audit_log. To guard the user's MCP servers, run \`${INIT_COMMAND}\` in the project directory and restart the client.`;
-  return `Tool calls pass through agentguard (${runtime.policy.mode} mode). Errors carry { code, cause, fix, retryable }; follow "fix". CAP_EXCEEDED, LOOP_DETECTED and KILLED are not retryable: stop and report to the user. APPROVAL_REQUIRED: relay the approval command to the user, then retry the identical call once.`;
+    }, so it serves only its own read-only tools: okgate_get_status (what it guards, caps, kill switch), okgate_get_report (what a run did or would have done) and okgate_verify_audit_log. To guard the user's MCP servers, run \`${INIT_COMMAND}\` in the project directory and restart the client.`;
+  return `Tool calls pass through okgate (${runtime.policy.mode} mode). Errors carry { code, cause, fix, retryable }; follow "fix". CAP_EXCEEDED, LOOP_DETECTED and KILLED are not retryable: stop and report to the user. APPROVAL_REQUIRED: relay the approval command to the user, then retry the identical call once.`;
 }
 
 /** Build the per-session MCP server. */
@@ -183,7 +184,7 @@ export function createDownstreamServer(
   opts: DownstreamOptions = {},
 ): McpServer {
   const server = new McpServer(
-    { name: "agentguard", version: PROXY_VERSION, title: "agentguard policy proxy" },
+    { name: "okgate", version: PROXY_VERSION, title: "okgate policy proxy" },
     {
       capabilities: {
         tools: { listChanged: true },
@@ -223,8 +224,8 @@ export function createDownstreamServer(
         agent: null,
         error: {
           code: "TOOL_DENIED",
-          cause: "the agent key in Authorization / X-Agentguard-Key is not in agentguard.yaml",
-          fix: "use a key created with `agentguard key create <agent>`, or omit the key to use the global policy",
+          cause: "the agent key in Authorization / X-Agentguard-Key is not in okgate.yaml",
+          fix: "use a key created with `okgate key create <agent>`, or omit the key to use the global policy",
           retryable: false,
         },
       };
@@ -248,7 +249,7 @@ export function createDownstreamServer(
   low.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     touch();
     if (ownToolsActive(runtime)) {
-      // Read-only answers about agentguard itself: no upstream, no policy decision, no audit entry.
+      // Read-only answers about okgate itself: no upstream, no policy decision, no audit entry.
       const own = await callOwnTool(
         ownTools,
         req.params.name,

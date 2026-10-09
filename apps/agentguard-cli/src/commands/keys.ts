@@ -1,6 +1,6 @@
 /**
- * `agentguard key create|list|revoke` — scoped agent credentials. The proxy holds upstream tokens;
- * each agent gets its own `agk_…` key whose hash and scope live in agentguard.yaml.
+ * `okgate key create|list|revoke` — scoped agent credentials. The proxy holds upstream tokens;
+ * each agent gets its own `agk_…` key whose hash and scope live in okgate.yaml.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import YAML, { isMap, isSeq, YAMLSeq, type YAMLMap } from "yaml";
@@ -22,9 +22,7 @@ export async function keyCommand(args: ParsedArgs, io: Io): Promise<number> {
 
   if (sub === "list" || sub === undefined) {
     if (items.length === 0)
-      io.out(
-        "no agents in agentguard.yaml — create one: agentguard key create <name> --allow 'crm_get_*'",
-      );
+      io.out("no agents in okgate.yaml — create one: okgate key create <name> --allow 'crm_get_*'");
     for (const a of items) {
       const allow = a.get("allow");
       io.out(
@@ -35,7 +33,7 @@ export async function keyCommand(args: ParsedArgs, io: Io): Promise<number> {
   }
   if (!name) {
     io.err(
-      "usage: agentguard key create <agent> [--allow pattern]... [--deny pattern]... [--writes n] [--spend n] [--deletes n] [--emails n] [--tool-calls n] [--mode dry-run|enforce] [--upstream name]...",
+      "usage: okgate key create <agent> [--allow pattern]... [--deny pattern]... [--writes n] [--spend n] [--deletes n] [--emails n] [--tool-calls n] [--mode dry-run|enforce] [--upstream name]...",
     );
     return 1;
   }
@@ -47,7 +45,7 @@ export async function keyCommand(args: ParsedArgs, io: Io): Promise<number> {
     }
     seq.items.splice(seq.items.indexOf(items[idx]!), 1);
     writeFileSync(path, doc.toString());
-    io.out(`revoked ${name}: removed from agentguard.yaml (running proxies pick it up on restart)`);
+    io.out(`revoked ${name}: removed from okgate.yaml (running proxies pick it up on restart)`);
     return 0;
   }
   if (sub !== "create") {
@@ -88,7 +86,7 @@ export async function keyCommand(args: ParsedArgs, io: Io): Promise<number> {
     `${existing ? "rotated" : "created"} agent "${name}" in ${path}${allow.length ? ` (allow: ${allow.join(", ")})` : " (allow: all tools)"}`,
   );
   io.err(
-    "the key is shown once; give it to the agent as `Authorization: Bearer <key>` (HTTP) — over stdio use `agentguard proxy --agent " +
+    "the key is shown once; give it to the agent as `Authorization: Bearer <key>` (HTTP) — over stdio use `okgate proxy --agent " +
       name +
       "`",
   );

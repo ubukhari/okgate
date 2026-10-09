@@ -1,6 +1,6 @@
 # @agentwares/agentguard-sdk
 
-The [agentguard](https://github.com/agentwares/agentguard/tree/main/apps/agentguard-cli#readme) policy engine for tool calls that never go through MCP — OpenAI Agents SDK, LangChain, or plain functions — plus a guarded `fetch` that puts a **hard dollar limit on LLM token spend** across OpenAI, Anthropic and Gemini. Same `agentguard.yaml`, same caps, kill switch, approvals, dry-run and hash-chained audit log as the proxy; the CLI (`agentguard report`, `kill`, `approve`, `verify`) works on the same files.
+The [okgate](https://github.com/agentwares/agentguard/tree/main/apps/agentguard-cli#readme) policy engine for tool calls that never go through MCP — OpenAI Agents SDK, LangChain, or plain functions — plus a guarded `fetch` that puts a **hard dollar limit on LLM token spend** across OpenAI, Anthropic and Gemini. Same `okgate.yaml`, same caps, kill switch, approvals, dry-run and hash-chained audit log as the proxy; the CLI (`okgate report`, `kill`, `approve`, `verify`) works on the same files.
 
 ```sh
 npm i @agentwares/agentguard-sdk
@@ -11,7 +11,7 @@ import { createGuard, createGuardedFetch, wrapOpenAIAgentsTools } from "@agentwa
 import { Agent, run, tool } from "@openai/agents";
 import OpenAI, { setDefaultOpenAIClient } from "@openai/agents-openai";
 
-const ag = await createGuard({ policy: "agentguard.yaml" }); // file-backed: shares state with the CLI
+const ag = await createGuard({ policy: "okgate.yaml" }); // file-backed: shares state with the CLI
 
 // 1. tools: caps, approvals, loop breaker, dry-run — blocked calls return { code, cause, fix } as the tool output
 const tools = wrapOpenAIAgentsTools(ag, [deleteContact, sendEmail, chargeCard]);
@@ -27,7 +27,7 @@ console.log(await ag.reportMarkdown()); // what it did / would have destroyed / 
 
 |                                                                      |                                                                                                                                                                                                                                                          |
 | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `createGuard({ policy, runId?, agent?, onEvent?, memory?, env? })`   | `policy` is a path to `agentguard.yaml` (file-backed state, shared with the CLI) or an inline policy object (in-memory). `agent` picks a scope from `agents:`.                                                                                           |
+| `createGuard({ policy, runId?, agent?, onEvent?, memory?, env? })`   | `policy` is a path to `okgate.yaml` (file-backed state, shared with the CLI) or an inline policy object (in-memory). `agent` picks a scope from `agents:`.                                                                                               |
 | `ag.wrap(fn, { name, annotations?, outputSchema?, onBlock? })`       | wrap `(args) => result`; blocked calls throw `GuardError` (or return the body with `onBlock: "return"`)                                                                                                                                                  |
 | `ag.wrapAll({ name: fn, … })`                                        | wrap a map of functions by name                                                                                                                                                                                                                          |
 | `wrapOpenAIAgentsTool(s)(ag, tool(s), opts?)`                        | wrap what `tool({...})` returns (duck-typed on `invoke`); blocked → error JSON as the tool output, faked → synthetic JSON                                                                                                                                |
@@ -57,7 +57,7 @@ spend:
 
 Money spent by a response that crosses the cap is still recorded (`reason: over cap after the fact`) and alerts fire; the next call is refused.
 
-A model with no matching price — a fine-tune, or one newer than the built-in table — is recorded at $0 with `reason: no list price for "<model>"`, so `agentguard report` shows a model the budget is not covering instead of under-counting it silently. Add it under `spend.models` to bring it back under the cap.
+A model with no matching price — a fine-tune, or one newer than the built-in table — is recorded at $0 with `reason: no list price for "<model>"`, so `okgate report` shows a model the budget is not covering instead of under-counting it silently. Add it under `spend.models` to bring it back under the cap.
 
 ## Tests
 

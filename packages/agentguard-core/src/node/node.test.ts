@@ -113,8 +113,8 @@ describe("node stores", () => {
     );
     expect(loaded.stateDir).toBe(join(dir, ".ag"));
     expect(loaded.auditPath).toBe(join(dir, "logs/a.jsonl"));
-    expect(loaded.killPath).toBe(join(dir, ".agentguard/KILL"));
-    expect(() => loadPolicyFile(join(dir, "nope.yaml"))).toThrowError(/agentguard init/);
+    expect(loaded.killPath).toBe(join(dir, ".okgate/KILL"));
+    expect(() => loadPolicyFile(join(dir, "nope.yaml"))).toThrowError(/okgate init/);
   });
 });
 

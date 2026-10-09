@@ -1,5 +1,5 @@
 /**
- * The real thing: `agentguard proxy` spawned as a child over stdio (what Claude Code / Cursor do),
+ * The real thing: `okgate proxy` spawned as a child over stdio (what Claude Code / Cursor do),
  * and `--http` with X-Run-Id, scoped agent keys and the control endpoints.
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { generateAgentKey, hashAgentKey } from "@agentwares/agentguard-core";
 import { readAuditFile, verifyAuditFile } from "@agentwares/agentguard-core/node";
 import type { HttpRegistration } from "./http.js";
+import { INIT_COMMAND } from "./own-tools.js";
 
 const tsxLoader = fileURLToPath(import.meta.resolve("tsx"));
 const cli = fileURLToPath(new URL("../cli.ts", import.meta.url));
@@ -38,9 +39,9 @@ ${extra}`;
 }
 
 function tempPolicy(extra?: string): { dir: string; path: string } {
-  const dir = mkdtempSync(join(tmpdir(), "agentguard-e2e-"));
+  const dir = mkdtempSync(join(tmpdir(), "okgate-e2e-"));
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
-  const path = join(dir, "agentguard.yaml");
+  const path = join(dir, "okgate.yaml");
   writeFileSync(path, policyYaml(extra));
   return { dir, path };
 }
@@ -83,7 +84,7 @@ describe("proxy over stdio (spawned)", () => {
     expect(codes).toEqual(["ok", "ok", "ok", "CAP_EXCEEDED"]);
     await client.close();
     await new Promise((r) => setTimeout(r, 200));
-    const audit = join(dir, ".agentguard", "audit.jsonl");
+    const audit = join(dir, ".okgate", "audit.jsonl");
     const entries = readAuditFile(audit);
     expect(entries.map((e) => e.run_id)).toEqual(Array(5).fill("stdio_run"));
     expect(entries.map((e) => e.outcome)).toEqual(["ok", "ok", "ok", "ok", "blocked"]);
@@ -109,12 +110,13 @@ describe("proxy over stdio (spawned)", () => {
   });
 
   it("with no policy file anywhere, still serves MCP: its own read-only tools, nothing written", async () => {
-    // What an install button, a registry install or Glama's build starts: no agentguard.yaml in
+    // What an install button, a registry install or Glama's build starts: no okgate.yaml in
     // the directory the client spawns it in, and no AGENTGUARD_CONFIG.
-    const dir = mkdtempSync(join(tmpdir(), "agentguard-noconfig-"));
+    const dir = mkdtempSync(join(tmpdir(), "okgate-noconfig-"));
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
     const env = { ...(process.env as Record<string, string>) };
     delete env.AGENTGUARD_CONFIG;
+    delete env.OKGATE_CONFIG;
     const client = new Client({ name: "e2e-noconfig", version: "0" });
     cleanups.push(() => client.close());
     await client.connect(
@@ -126,16 +128,16 @@ describe("proxy over stdio (spawned)", () => {
         stderr: "pipe",
       }),
     );
-    expect(client.getServerVersion()?.name).toBe("agentguard");
-    expect(client.getInstructions()).toContain("npx -y @agentwares/agentguard init");
+    expect(client.getServerVersion()?.name).toBe("okgate");
+    expect(client.getInstructions()).toContain(INIT_COMMAND);
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name)).toEqual([
-      "agentguard_get_status",
-      "agentguard_get_report",
-      "agentguard_verify_audit_log",
+      "okgate_get_status",
+      "okgate_get_report",
+      "okgate_verify_audit_log",
     ]);
     const status = (await client.callTool({
-      name: "agentguard_get_status",
+      name: "okgate_get_status",
       arguments: {},
     })) as CallToolResult;
     expect(status.isError).toBeFalsy();
@@ -145,7 +147,7 @@ describe("proxy over stdio (spawned)", () => {
   });
 
   it("a policy file that was named and is missing is still an error", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "agentguard-missing-"));
+    const dir = mkdtempSync(join(tmpdir(), "okgate-missing-"));
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
     const child = spawn(
       process.execPath,
@@ -185,7 +187,7 @@ function startHttp(
     child.kill("SIGTERM");
   });
   return waitFor(() => {
-    const f = join(dir, ".agentguard", "http.json");
+    const f = join(dir, ".okgate", "http.json");
     if (!existsSync(f)) return undefined;
     try {
       return { child, reg: JSON.parse(readFileSync(f, "utf8")) as HttpRegistration, stderr };
@@ -317,7 +319,7 @@ describe("proxy over Streamable HTTP", () => {
         })
       ).status,
     ).toBe(200);
-    expect(existsSync(join(dir, ".agentguard", "KILL"))).toBe(true);
+    expect(existsSync(join(dir, ".okgate", "KILL"))).toBe(true);
     expect(
       code(
         (await a.callTool({ name: "crm_get_contact", arguments: { id: "c_1" } })) as CallToolResult,

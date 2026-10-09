@@ -1,0 +1,32 @@
+# /okgate:audit — which rules in GEMINI.md / AGENTS.md / CLAUDE.md the coding agents broke.
+description = "Check which written rules the coding agents broke in this repo's past sessions, then judge the ones no script can check."
+prompt = """
+Find out which rules in this repository's rule files (GEMINI.md, AGENTS.md, CLAUDE.md,
+.cursor/rules, and audit.rules in okgate.yaml) the coding agents actually broke.
+
+1. Run with the shell tool, from the repository root:
+   npx -y -p @agentwares/agentguard@latest okgate audit --json {{args}}
+   It reads this machine's Claude Code and Codex sessions for this repository and returns, per
+   rule, status (broken, kept, not-applicable, not-checkable), sessions_broken, each check's
+   sessions_applicable and the last_broken dates. Counts, rule ids and dates only: nothing is sent
+   anywhere, and no command or prompt from a session is in the output. Do not read the session
+   transcripts yourself.
+
+2. Report the mechanical results in plain words, most broken first ("R4 Run pnpm check before
+   pushing: broken in 9 of 31 sessions, last on ..."), with the window and the session count. For
+   a rule broken in most sessions, say that either the agents ignore it or the rule does not match
+   how the team works, and ask which. The user can see the command or path behind each break by
+   running `npx -y -p @agentwares/agentguard@latest okgate audit` in their own terminal.
+
+3. For each rule with status not-checkable (skip marked_not_checkable ones), judge kept, broken or
+   can't tell using only the repository as it is, `git log --since=<since> --stat` and `git show`,
+   and this session. One line each with the evidence; say can't tell rather than guess. Where a
+   rule could be checked mechanically, suggest an inline comment on its line, for example
+   <!-- okgate: no-push main -->, <!-- okgate: run "pnpm test" before push -->,
+   <!-- okgate: no-edit ".env" -->, <!-- okgate: never "rm -rf /*" -->, or
+   <!-- okgate: none --> when no mechanical check applies.
+
+4. Offer `npx -y -p @agentwares/agentguard@latest okgate audit --enforce --preview`, which shows the hook
+   rules that would enforce the checkable rules (dry-run). Do not run --enforce unless asked, and
+   do not edit any rule file unless asked.
+"""

@@ -1,6 +1,7 @@
 /**
- * `agentguard kill|resume|approve|deny|approvals` — the human side of the loop.
+ * `okgate kill|resume|approve|deny|approvals` — the human side of the loop.
  */
+import { KILL_ENV, LEGACY_KILL_ENV } from "@agentwares/agentguard-core";
 import { flagBool, flagString, type ParsedArgs } from "../args.js";
 import { createFileGuard, loadPolicyFor, readRegistration, type Io } from "../context.js";
 
@@ -35,11 +36,11 @@ export async function killCommand(args: ParsedArgs, io: Io): Promise<number> {
   const reason =
     args.positionals.join(" ") ||
     flagString(args, "reason") ||
-    `agentguard kill by ${io.env.USER ?? "operator"}`;
+    `okgate kill by ${io.env.USER ?? "operator"}`;
   kill.kill(reason);
   await pokeHttp(io, readRegistration(loaded), "/kill", { reason });
   io.out(
-    `KILLED: ${kill.path} written — every tool call through this policy now returns KILLED. Clear with: agentguard resume`,
+    `KILLED: ${kill.path} written — every tool call through this policy now returns KILLED. Clear with: okgate resume`,
   );
   return 0;
 }
@@ -50,10 +51,11 @@ export async function resumeCommand(args: ParsedArgs, io: Io): Promise<number> {
   kill.resume();
   await pokeHttp(io, readRegistration(loaded), "/resume");
   io.out(`resumed: ${kill.path} removed`);
-  if (io.env[loaded.policy.kill.env])
-    io.err(
-      `note: ${loaded.policy.kill.env} is set in this shell's environment; proxies started from it stay killed`,
-    );
+  for (const name of new Set([loaded.policy.kill.env, KILL_ENV, LEGACY_KILL_ENV]))
+    if (io.env[name] && io.env[name] !== "0" && io.env[name]!.toLowerCase() !== "false")
+      io.err(
+        `note: ${name} is set in this shell's environment; proxies started from it stay killed`,
+      );
   return 0;
 }
 
@@ -65,7 +67,7 @@ export async function decideCommand(
   const id = args.positionals[0];
   if (!id) {
     io.err(
-      `usage: agentguard ${decision === "approved" ? "approve" : "deny"} <approval-id> [--by name] [--note text]`,
+      `usage: okgate ${decision === "approved" ? "approve" : "deny"} <approval-id> [--by name] [--note text]`,
     );
     return 1;
   }
@@ -78,7 +80,7 @@ export async function decideCommand(
     flagString(args, "note"),
   );
   if (!record) {
-    io.err(`no approval ${id} — pending ones: agentguard approvals`);
+    io.err(`no approval ${id} — pending ones: okgate approvals`);
     return 1;
   }
   io.out(
@@ -104,8 +106,7 @@ export async function approvalsCommand(args: ParsedArgs, io: Io): Promise<number
       `${r.id}  ${r.status.padEnd(9)} ${r.tool}  run ${r.run_id}${r.agent ? ` agent ${r.agent}` : ""}  expires ${r.expires_at}`,
     );
     io.out(`  args: ${JSON.stringify(r.args).slice(0, 300)}`);
-    if (r.status === "pending")
-      io.out(`  → agentguard approve ${r.id}   |   agentguard deny ${r.id}`);
+    if (r.status === "pending") io.out(`  → okgate approve ${r.id}   |   okgate deny ${r.id}`);
   }
   return 0;
 }

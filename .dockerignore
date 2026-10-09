@@ -4,4 +4,4 @@
 **/.turbo
 **/coverage
 **/*.tsbuildinfo
-**/.agentguard
+**/.okgate
